@@ -1,0 +1,78 @@
+﻿/* =========================================
+   1. ПОДКЛЮЧЕНИЕ ШРИФТА NUNITO
+   (Тот самый шрифт с оригинального сайта)
+   ========================================= */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@200;300;400;500;600;700;800;900&display=swap');
+
+/* =========================================
+   2. TAILWIND CSS
+   ========================================= */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================
+   3. БАЗОВЫЕ СТИЛИ
+   ========================================= */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #000000; /* Глубокий черный */
+  color: #f5f5f5;
+  
+  /* Сглаживание шрифтов (Делает текст дорогим/тонким) */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Применяем Nunito как основной шрифт */
+  font-family: 'Nunito', sans-serif;
+  
+  /* Фикс прыжка ширины при переходах */
+  overflow-y: scroll; 
+}
+
+/* Красивый скроллбар */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* =========================================
+   4. ТВОЯ СТАРАЯ АНИМАЦИЯ "DIAG"
+   ========================================= */
+.diag-enter-active,
+.diag-leave-active {
+  transition: all 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.diag-leave-to {
+  opacity: 0;
+  transform: translate(20px, 20px); 
+}
+.diag-enter-from {
+  opacity: 0;
+  transform: translate(20px, 20px); 
+}
+
+/* =========================================
+   5. НОВАЯ АНИМАЦИЯ "PAGE" (На всякий случай)
+   ========================================= */
+.page-enter-active,
+.page-leave-active {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+  filter: blur(8px);
+  transform: scale(0.98) translateY(5px);
+}
+
+.layout-enter-active,
+.layout-leave-active {
+  transition: all 0.3s ease;
+}
+.layout-enter-from,
+.layout-leave-to {
+  opacity: 0;
+  filter: blur(4px);
+}
