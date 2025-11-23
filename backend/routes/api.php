@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\Admin\UserController; // Импорт контроллера админки
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\ProductController; // <--- Импорт контроллера товаров
+use App\Http\Controllers\PaymentController; // <--- Импорт контроллера платежей
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -11,7 +13,7 @@ use Illuminate\Http\Request;
 |--------------------------------------------------------------------------
 */
 
-// Тестовый роут (проверка, что API жив)
+// Тестовый роут
 Route::get('/ping', function () {
     return response()->json([
         'status'  => 'ok',
@@ -24,15 +26,17 @@ Route::get('/ping', function () {
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-// 🔥 РОУТ ДЛЯ КАРТИНОК (ПУБЛИЧНЫЙ)
-// Нужен, чтобы отдавать файлы через контроллер, минуя проблемы с папками Windows и Symlinks
+// Роут для картинок аватаров
 Route::get('/avatar/{filename}', [AuthController::class, 'getAvatar']);
+
+// 🔥 ТОВАРЫ (Публичный список для страницы заказа)
+Route::get('/products', [ProductController::class, 'index']);
 
 
 // === ЗАЩИЩЕННЫЕ РОУТЫ (Требуют токен) ===
 Route::middleware('auth:sanctum')->group(function () {
 
-    // 1. Получить данные текущего пользователя
+    // 1. Данные пользователя
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
@@ -41,15 +45,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/avatar', [AuthController::class, 'updateAvatar']);
     Route::delete('/user/avatar', [AuthController::class, 'deleteAvatar']);
 
-    // 3. Старый роут (для совместимости, если где-то еще используется)
+    // 3. БИЛЛИНГ И ПЛАТЕЖИ
+    Route::post('/payment/topup', [PaymentController::class, 'topup']);     // Создать платеж
+    Route::get('/payment/history', [PaymentController::class, 'history']);  // История операций
+
+    // 4. Старый роут (совместимость)
     Route::get('/me', [AuthController::class, 'me']);
 
     // === АДМИНКА (Только для роли admin) ===
-    // Контроллер сам проверит роль, но здесь мы группируем маршруты
     Route::prefix('admin')->group(function () {
-        Route::get('/users', [UserController::class, 'index']);       // Получить всех
-        Route::put('/users/{id}', [UserController::class, 'update']); // Обновить юзера
-        Route::delete('/users/{id}', [UserController::class, 'destroy']); // Удалить юзера
+        
+        // Управление пользователями
+        Route::get('/users', [UserController::class, 'index']);
+        Route::put('/users/{id}', [UserController::class, 'update']);
+        Route::delete('/users/{id}', [UserController::class, 'destroy']);
+
+        // Управление товарами (Создание и Удаление)
+        Route::post('/products', [ProductController::class, 'store']);
+        Route::delete('/products/{id}', [ProductController::class, 'destroy']);
     });
 
 });

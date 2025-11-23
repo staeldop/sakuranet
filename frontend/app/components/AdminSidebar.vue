@@ -37,6 +37,10 @@ const handleLogout = () => {
         <IconUsers class="icon" /> 
         <span>Пользователи</span>
       </NuxtLink>
+
+      <NuxtLink to="/dashboard/admin/products" class="nav-item">
+          <IconServer class="icon" /> <span>Товары</span>
+      </NuxtLink>
       
       <!-- Сюда можно добавить Серверы, Транзакции и т.д. -->
     </nav>

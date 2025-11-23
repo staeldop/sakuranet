@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useApiFetch } from '~/composables/useApi' // <-- ИМПОРТ API
 
 // --- 1. ИМПОРТЫ ---
 import IconGamepad from '~/assets/icons/gamepad.svg?component'
@@ -67,81 +68,30 @@ const setCategory = (cat: string) => {
 }
 
 // --- ДАННЫЕ ---
-const products = ref([
-  {
-    id: 1,
-    name: 'coding start',
-    category: 'gaming',
-    country: 'DE', 
-    gameType: 'coding',
-    price: 69.00,
-    attributes: [
-      { key: 'CPU', value: '1 vCore', icon: 'cpu' },
-      { key: 'RAM', value: '1 ГБ', icon: 'ram' },
-      { key: 'Disk', value: '5 ГБ NVMe', icon: 'disk' },
-      { key: 'Env', value: 'Начальная', icon: 'code' }
-    ]
-  },
-  {
-    id: 2,
-    name: 'minecraft start',
-    category: 'gaming',
-    country: 'RU',
-    gameType: 'gaming',
-    price: 499,
-    attributes: [
-      { key: 'CPU', value: 'Ryzen 5 3600', icon: 'cpu' },
-      { key: 'RAM', value: '8 GB DDR4', icon: 'ram' },
-      { key: 'Disk', value: '50 GB NVMe', icon: 'disk' },
-    ]
-  },
-  {
-    id: 3,
-    name: 'minecraft pro',
-    category: 'gaming',
-    country: 'DE',
-    gameType: 'gaming',
-    price: 1200,
-    attributes: [
-      { key: 'CPU', value: 'Ryzen 9 7950X', icon: 'cpu' },
-      { key: 'RAM', value: '16 GB DDR5', icon: 'ram' },
-      { key: 'Disk', value: '100 GB NVMe', icon: 'disk' },
-    ]
-  },
-  {
-    id: 4,
-    name: 'hi-load-1',
-    category: 'virtual',
-    country: 'FI',
-    gameType: null,
-    price: 450,
-    attributes: [
-      { key: 'vCPU', value: '1 vCore', icon: 'cpu' },
-      { key: 'RAM', value: '2 GB DDR5', icon: 'ram' },
-      { key: 'SSD', value: '80 GB NVMe', icon: 'disk' },
-    ]
-  },
-  {
-    id: 5,
-    name: 'dedicated i9',
-    category: 'dedicated',
-    country: 'RU',
-    gameType: null,
-    price: 15000,
-    attributes: [
-      { key: 'CPU', value: 'Core i9-13900K', icon: 'cpu' },
-      { key: 'RAM', value: '64 GB DDR5', icon: 'ram' },
-      { key: 'Port', value: '10 Gbit/s', icon: 'disk' },
-    ]
+const products = ref([]) // <-- ТЕПЕРЬ ПУСТОЙ МАССИВ
+
+// ЗАГРУЗКА ТОВАРОВ С БЭКЕНДА
+onMounted(async () => {
+  try {
+    const { data } = await useApiFetch<any[]>('/api/products')
+    if (data.value) {
+      products.value = data.value
+    }
+  } catch (e) {
+    console.error('Ошибка загрузки товаров:', e)
   }
-])
+})
 
 const filteredProducts = computed(() => {
-  return products.value.filter(product => {
+  return products.value.filter((product: any) => {
     if (product.category !== activeCategory.value) return false
+    
     if (activeCategory.value === 'gaming') {
+      // Проверка страны (учитываем, что в БД может быть null)
       if (activeCountry.value && product.country !== activeCountry.value) return false
-      if (activeGameType.value && product.gameType !== activeGameType.value) return false
+      
+      // ВАЖНО: В базе поле называется game_type (snake_case), а не gameType
+      if (activeGameType.value && product.game_type !== activeGameType.value) return false
     }
     return true
   })
@@ -152,7 +102,8 @@ const animationKey = computed(() => {
 })
 
 const getCardIcon = (product: any) => {
-  if (product.gameType === 'coding') return IconCode
+  // ВАЖНО: Проверяем game_type из базы
+  if (product.game_type === 'coding') return IconCode
   return categoryIcons[product.category]
 }
 </script>
@@ -232,7 +183,7 @@ const getCardIcon = (product: any) => {
               </div>
 
               <div class="price-block">
-                <span class="price">₽{{ product.price.toFixed(2).replace('.', ',') }}</span> 
+                <span class="price">₽{{ Number(product.price).toFixed(2).replace('.', ',') }}</span> 
                 <span class="period"> / мес.</span>
               </div>
 
@@ -258,7 +209,8 @@ const getCardIcon = (product: any) => {
         </div>
 
         <div v-if="filteredProducts.length === 0" class="col-span-full text-center py-20 text-neutral-500">
-          В этой категории пока нет товаров
+          В этой категории пока нет товаров.
+          <br><span class="text-xs text-neutral-700">Добавьте их через админ-панель.</span>
         </div>
 
       </div>
