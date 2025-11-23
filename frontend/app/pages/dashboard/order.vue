@@ -68,7 +68,7 @@ const setCategory = (cat: string) => {
 }
 
 // --- ДАННЫЕ ---
-const products = ref([]) // <-- ТЕПЕРЬ ПУСТОЙ МАССИВ
+const products = ref([]) 
 
 // ЗАГРУЗКА ТОВАРОВ С БЭКЕНДА
 onMounted(async () => {
@@ -188,7 +188,7 @@ const getCardIcon = (product: any) => {
               </div>
 
               <div class="specs-list">
-                <div v-for="(attr, idx) in product.attributes" :key="idx" class="spec-item">
+                <div v-for="(attr, idx) in product.specs" :key="idx" class="spec-item">
                    <div class="spec-icon-col flex-shrink-0">
                       <component :is="specIcons[attr.icon]" class="spec-svg" />
                    </div>

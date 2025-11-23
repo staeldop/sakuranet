@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
+import { $api, useApiFetch } from '~/composables/useApi'
 
-// Подключаем layout админки
-definePageMeta({
-  layout: 'admin'
-})
+// Иконки
+import IconSearch from '~/assets/icons/search.svg?component' // Если нет, создай или удали импорт
+import IconEdit from '~/assets/icons/ticket.svg?component' // Временно ticket как edit
+import IconTrash from '~/assets/icons/trash.svg?component'
+
+definePageMeta({ layout: 'admin' })
 
 interface User {
   id: number
@@ -13,11 +16,10 @@ interface User {
   email: string
   balance: number
   role: 'user' | 'admin'
+  avatar?: string
 }
 
-const config = useRuntimeConfig()
 const auth = useAuthStore()
-
 const users = ref<User[]>([])
 const searchQuery = ref('')
 const isLoading = ref(true)
@@ -28,35 +30,25 @@ const isEditModalOpen = ref(false)
 const editingUser = ref<User | null>(null)
 const form = ref({ name: '', email: '', balance: 0, role: 'user' as 'user' | 'admin' })
 
-// --- ЗАГРУЗКА ПОЛЬЗОВАТЕЛЕЙ ---
+// --- ЗАГРУЗКА ---
 const fetchUsers = async () => {
   isLoading.value = true
   errorMessage.value = ''
   
   try {
-    const { data, error } = await useFetch<any>('/api/admin/users', {
-      baseURL: config.public.apiBase,
-      headers: { 
-        Authorization: `Bearer ${auth.token}`,
-        Accept: 'application/json'
-      }
-    })
+    // Используем useApiFetch для GET запроса
+    const { data, error } = await useApiFetch<any>('/api/admin/users')
 
     if (error.value) {
       console.error('API Error:', error.value)
-      errorMessage.value = `Ошибка API: ${error.value.statusMessage || error.value.statusCode}`
+      errorMessage.value = `Ошибка: ${error.value.statusCode}`
       return
     }
 
     if (data.value) {
-      // Обработка разных форматов ответа Laravel (прямой массив или { data: [...] })
       users.value = Array.isArray(data.value) ? data.value : (data.value.data || [])
-    } else {
-      errorMessage.value = 'Пустой ответ от сервера'
     }
-
-  } catch (e: any) {
-    console.error('Fetch error:', e)
+  } catch (e) {
     errorMessage.value = 'Ошибка соединения'
   } finally {
     isLoading.value = false
@@ -78,12 +70,11 @@ const filteredUsers = computed(() => {
 
 // --- РЕДАКТИРОВАНИЕ ---
 const openEditModal = (user: User) => {
-  editingUser.value = user // Сохраняем ссылку на объект
-  // Копируем данные в форму
+  editingUser.value = user
   form.value = { 
     name: user.name, 
     email: user.email, 
-    balance: Number(user.balance), // Гарантируем число
+    balance: Number(user.balance),
     role: user.role 
   }
   isEditModalOpen.value = true
@@ -91,234 +82,309 @@ const openEditModal = (user: User) => {
 
 const saveUser = async () => {
   if (!editingUser.value) return
-  
   const userId = editingUser.value.id
 
   try {
-    // Отправляем запрос на обновление
-    await $fetch(`/api/admin/users/${userId}`, {
-      baseURL: config.public.apiBase,
+    await $api(`/api/admin/users/${userId}`, {
       method: 'PUT',
-      body: form.value,
-      headers: { Authorization: `Bearer ${auth.token}` }
+      body: form.value
     })
     
-    // 🔥 ИСПРАВЛЕНИЕ: Находим пользователя в локальном массиве и обновляем его
+    // Локальное обновление
     const index = users.value.findIndex(u => u.id === userId)
     if (index !== -1) {
-      // Создаем новый объект, чтобы Vue увидел изменения
       users.value[index] = { 
         ...users.value[index], 
         ...form.value,
-        balance: Number(form.value.balance) // Убедимся, что баланс число
+        balance: Number(form.value.balance)
       }
     }
-    
     isEditModalOpen.value = false
   } catch (e) {
-    console.error(e)
-    alert('Ошибка при сохранении. Проверьте консоль.')
+    alert('Ошибка при сохранении')
   }
 }
 
 const deleteUser = async (id: number) => {
   if (!confirm('Удалить пользователя?')) return
   try {
-    await $fetch(`/api/admin/users/${id}`, {
-      baseURL: config.public.apiBase,
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${auth.token}` }
-    })
+    await $api(`/api/admin/users/${id}`, { method: 'DELETE' })
     users.value = users.value.filter(u => u.id !== id)
   } catch (e) {
     alert('Ошибка при удалении')
   }
 }
 
-onMounted(() => {
-  fetchUsers()
-})
+// Хелпер для аватара (инициалы)
+const getInitials = (name: string) => {
+  return name ? name.substring(0, 2).toUpperCase() : '??'
+}
+
+// Цвет аватара на основе ID (чтобы были разные)
+const getAvatarColor = (id: number) => {
+  const colors = ['bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-pink-500', 'bg-yellow-500']
+  return colors[id % colors.length]
+}
+
+onMounted(fetchUsers)
 </script>
 
 <template>
-  <div class="admin-page">
+  <div class="admin-shell">
+    <!-- Фоны (как на логине) -->
+    <div class="glow glow-1" />
+    <div class="glow glow-2" />
     
-    <!-- HEADER -->
-    <div class="page-header">
-      <div class="title-group">
-        <h1 class="title">База пользователей</h1>
-        <div class="subtitle">Управление аккаунтами клиентов</div>
-      </div>
-      <div class="search-wrapper">
-        <input 
-          v-model="searchQuery" 
-          type="text" 
-          placeholder="Поиск (ID, Email, Имя)..." 
-          class="search-input"
-        >
-      </div>
-    </div>
-
-    <!-- TABLE -->
-    <div class="table-container">
-      <table class="users-table">
-        <thead>
-          <tr>
-            <th width="60">ID</th>
-            <th>Пользователь</th>
-            <th>Баланс</th>
-            <th>Роль</th>
-            <th width="100" class="text-right">Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- 1. ЗАГРУЗКА -->
-          <tr v-if="isLoading">
-            <td colspan="5" class="state-cell">
-              <div class="loader"></div> Загрузка базы...
-            </td>
-          </tr>
-
-          <!-- 2. ОШИБКА -->
-          <tr v-else-if="errorMessage">
-            <td colspan="5" class="state-cell error-cell">
-              <span>⚠️ {{ errorMessage }}</span>
-              <button @click="fetchUsers" class="retry-btn">Повторить</button>
-            </td>
-          </tr>
-
-          <!-- 3. ПУСТО -->
-          <tr v-else-if="filteredUsers.length === 0">
-            <td colspan="5" class="state-cell empty-cell">
-              Пользователи не найдены
-            </td>
-          </tr>
-
-          <!-- 4. СПИСОК -->
-          <tr v-else v-for="user in filteredUsers" :key="user.id">
-            <td class="id-cell">#{{ user.id }}</td>
-            <td>
-              <div class="user-info">
-                <span class="u-name">{{ user.name }}</span>
-                <span class="u-email">{{ user.email }}</span>
-              </div>
-            </td>
-            <td class="balance-cell" :class="{ 'text-green': user.balance > 0 }">
-              {{ user.balance }} ₽
-            </td>
-            <td>
-              <span class="role-badge" :class="user.role">
-                {{ user.role === 'admin' ? 'ADMIN' : 'USER' }}
-              </span>
-            </td>
-            <td class="text-right">
-              <div class="actions">
-                <button @click="openEditModal(user)" class="btn-icon edit" title="Редактировать">✎</button>
-                <button @click="deleteUser(user.id)" class="btn-icon delete" title="Удалить">✕</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- МОДАЛКА -->
-    <div v-if="isEditModalOpen" class="modal-overlay" @click.self="isEditModalOpen = false">
-      <div class="modal">
-        <h2>Редактирование #{{ editingUser?.id }}</h2>
-        <div class="form-group">
-          <label>Имя</label><input v-model="form.name">
-        </div>
-        <div class="form-group">
-          <label>Email</label><input v-model="form.email">
-        </div>
-        <div class="form-row">
-          <div class="form-group half">
-            <label>Баланс</label><input v-model.number="form.balance" type="number">
+    <div class="content-wrapper">
+      
+      <!-- ХЕДЕР -->
+      <div class="page-header">
+        <div class="title-group">
+          <div class="auth-badge mb-2">
+            <span class="badge-dot" />
+            <span class="badge-text">USERS DATABASE</span>
           </div>
-          <div class="form-group half">
-            <label>Роль</label>
-            <select v-model="form.role">
-              <option value="user">Клиент</option>
-              <option value="admin">Администратор</option>
-            </select>
-          </div>
+          <h1 class="title">Пользователи</h1>
+          <div class="subtitle">Управление клиентами и балансом</div>
         </div>
-        <div class="modal-actions">
-          <button @click="isEditModalOpen = false" class="btn-cancel">Отмена</button>
-          <button @click="saveUser" class="btn-save">Сохранить</button>
+        
+        <!-- ПОИСК -->
+        <div class="search-wrapper">
+          <div class="search-icon">🔍</div>
+          <input 
+            v-model="searchQuery" 
+            type="text" 
+            placeholder="Поиск по ID, Имени, Email..." 
+            class="search-input"
+          >
         </div>
       </div>
-    </div>
 
+      <!-- ТАБЛИЦА -->
+      <div class="glass-card table-container">
+        <div class="card-glow-top" />
+        
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th width="80">ID</th>
+              <th>Пользователь</th>
+              <th>Баланс</th>
+              <th>Роль</th>
+              <th width="100" class="text-right">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- LOADER -->
+            <tr v-if="isLoading">
+              <td colspan="5" class="state-cell">
+                <div class="loader"></div> Загрузка...
+              </td>
+            </tr>
+
+            <!-- EMPTY -->
+            <tr v-else-if="filteredUsers.length === 0">
+              <td colspan="5" class="state-cell empty-cell">
+                Ничего не найдено
+              </td>
+            </tr>
+
+            <!-- ROWS -->
+            <tr v-else v-for="user in filteredUsers" :key="user.id" class="data-row">
+              <td class="id-cell">#{{ user.id }}</td>
+              
+              <td>
+                <div class="user-cell">
+                  <!-- Аватар -->
+                  <div class="avatar" :class="getAvatarColor(user.id)">
+                    {{ getInitials(user.name) }}
+                  </div>
+                  <div class="user-info">
+                    <span class="u-name">{{ user.name }}</span>
+                    <span class="u-email">{{ user.email }}</span>
+                  </div>
+                </div>
+              </td>
+
+              <td class="balance-cell">
+                <span :class="user.balance > 0 ? 'text-green-400' : 'text-gray-500'">
+                  {{ new Intl.NumberFormat('ru-RU').format(user.balance) }} ₽
+                </span>
+              </td>
+
+              <td>
+                <span class="role-badge" :class="user.role">
+                  {{ user.role === 'admin' ? 'ADMIN' : 'USER' }}
+                </span>
+              </td>
+
+              <td class="text-right">
+                <div class="actions">
+                  <button @click="openEditModal(user)" class="btn-icon edit" title="Редактировать">
+                    <IconEdit class="w-4 h-4" />
+                  </button>
+                  <button @click="deleteUser(user.id)" class="btn-icon delete" title="Удалить">
+                    <IconTrash class="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- МОДАЛКА -->
+      <Transition name="modal-fade">
+        <div v-if="isEditModalOpen" class="modal-overlay" @click.self="isEditModalOpen = false">
+          <div class="glass-card modal-card">
+            <div class="card-glow-top" />
+            
+            <h2 class="modal-title">Редактирование <span class="text-accent">#{{ editingUser?.id }}</span></h2>
+            
+            <form @submit.prevent="saveUser" class="modal-form">
+              <div class="form-group">
+                <label class="field-label">Имя</label>
+                <input v-model="form.name" class="glass-input" placeholder="Имя">
+              </div>
+              
+              <div class="form-group">
+                <label class="field-label">Email</label>
+                <input v-model="form.email" class="glass-input" placeholder="Email">
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group half">
+                  <label class="field-label">Баланс (₽)</label>
+                  <input v-model.number="form.balance" type="number" class="glass-input">
+                </div>
+                <div class="form-group half">
+                  <label class="field-label">Роль</label>
+                  <select v-model="form.role" class="glass-input">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="modal-actions">
+                <button type="button" @click="isEditModalOpen = false" class="ghost-btn">Отмена</button>
+                <button type="submit" class="primary-btn">Сохранить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+
+    </div>
   </div>
 </template>
 
 <style scoped>
-.admin-page { width: 100%; max-width: 1200px; margin: 0 auto; }
+/* === ОСНОВА (КАК ВЕЗДЕ) === */
+.admin-shell { position: relative; min-height: 100%; width: 100%; overflow: hidden; font-family: 'Inter', sans-serif; padding-bottom: 40px; }
+.content-wrapper { position: relative; z-index: 10; max-width: 1200px; margin: 0 auto; padding: 0 20px; }
 
-/* Header */
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; }
-.title { font-size: 24px; font-weight: 700; color: #fff; margin: 0; }
-.subtitle { color: #666; font-size: 13px; margin-top: 4px; }
+/* Glow Effects */
+.glow { position: absolute; width: 600px; height: 600px; border-radius: 50%; filter: blur(100px); opacity: 0.15; pointer-events: none; z-index: 0; }
+.glow-1 { top: -10%; left: -10%; background: radial-gradient(circle, #ff0055, transparent 70%); }
+.glow-2 { bottom: -10%; right: 20%; background: radial-gradient(circle, #0055ff, transparent 70%); }
 
-.search-input {
-  background: #0f0f0f; border: 1px solid #222;
-  padding: 10px 15px; border-radius: 8px; color: #fff; width: 300px; outline: none; transition: 0.2s;
+/* === ХЕДЕР === */
+.page-header { display: flex; justify-content: space-between; align-items: flex-end; margin: 30px 0; flex-wrap: wrap; gap: 20px; }
+.title { font-size: 28px; font-weight: 700; color: #fff; margin: 0; letter-spacing: -0.5px; }
+.subtitle { color: #888; font-size: 14px; margin-top: 4px; }
+
+.auth-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 100px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); width: fit-content; }
+.badge-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; }
+.badge-text { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #aaa; }
+
+/* === ПОИСК === */
+.search-wrapper { position: relative; width: 300px; }
+.search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #666; font-size: 14px; pointer-events: none; }
+.search-input { 
+  width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+  padding: 12px 12px 12px 40px; border-radius: 12px; color: #fff; outline: none; transition: 0.2s; font-size: 14px; box-sizing: border-box; 
 }
-.search-input:focus { border-color: #444; background: #141414; }
+.search-input:focus { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
 
-/* Table */
-.table-container { background: #0a0a0a; border-radius: 12px; border: 1px solid #222; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
-.users-table { width: 100%; border-collapse: collapse; text-align: left; }
-.users-table th { background: #111; padding: 16px 24px; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; border-bottom: 1px solid #222; }
-.users-table td { padding: 16px 24px; border-bottom: 1px solid #1a1a1a; font-size: 14px; color: #ccc; vertical-align: middle; }
-.users-table tr:last-child td { border-bottom: none; }
-.users-table tr:hover td { background: rgba(255,255,255,0.01); }
+/* === КАРТОЧКА ТАБЛИЦЫ === */
+.glass-card { 
+  position: relative; background: rgba(20, 20, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3); 
+}
+.card-glow-top { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); }
 
-/* Cells */
+/* === ТАБЛИЦА === */
+.data-table { width: 100%; border-collapse: collapse; text-align: left; }
+.data-table th { padding: 18px 24px; font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.data-table td { padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 14px; color: #ccc; vertical-align: middle; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-row { transition: background 0.2s; }
+.data-row:hover { background: rgba(255,255,255,0.03); }
+
 .id-cell { color: #444; font-family: monospace; font-size: 13px; }
+
+/* User Cell (Avatar + Info) */
+.user-cell { display: flex; align-items: center; gap: 12px; }
+.avatar { 
+  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; color: white; font-size: 12px; text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+/* Avatar Colors (Tailwind classes simulation) */
+.bg-blue-500 { background: #3b82f6; }
+.bg-purple-500 { background: #a855f7; }
+.bg-green-500 { background: #22c55e; }
+.bg-pink-500 { background: #ec4899; }
+.bg-yellow-500 { background: #eab308; }
+
 .user-info { display: flex; flex-direction: column; }
-.u-name { font-weight: 600; color: #fff; }
+.u-name { font-weight: 600; color: #fff; font-size: 14px; }
 .u-email { font-size: 12px; color: #666; margin-top: 2px; }
-.balance-cell { font-family: monospace; font-weight: 600; color: #888; }
-.balance-cell.text-green { color: #4ade80; }
+
+.balance-cell { font-family: monospace; font-weight: 600; }
 .text-right { text-align: right; }
 
 /* Badges */
-.role-badge { padding: 4px 8px; border-radius: 6px; font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; display: inline-block; }
-.role-badge.user { background: rgba(255,255,255,0.05); color: #777; }
-.role-badge.admin { background: rgba(239, 68, 68, 0.1); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2); }
+.role-badge { padding: 4px 10px; border-radius: 100px; font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; display: inline-block; }
+.role-badge.user { background: rgba(255,255,255,0.05); color: #888; border: 1px solid rgba(255,255,255,0.05); }
+.role-badge.admin { background: rgba(239, 68, 68, 0.1); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2); box-shadow: 0 0 10px rgba(239, 68, 68, 0.1); }
 
 /* Actions */
 .actions { display: flex; gap: 8px; justify-content: flex-end; }
-.btn-icon { width: 32px; height: 32px; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-.btn-icon.edit { background: rgba(59, 130, 246, 0.1); color: #60a5fa; }
-.btn-icon.edit:hover { background: rgba(59, 130, 246, 0.2); transform: translateY(-1px); }
-.btn-icon.delete { background: rgba(239, 68, 68, 0.1); color: #f87171; }
-.btn-icon.delete:hover { background: rgba(239, 68, 68, 0.2); transform: translateY(-1px); }
+.btn-icon { 
+  width: 32px; height: 32px; border-radius: 8px; border: none; cursor: pointer; 
+  display: flex; align-items: center; justify-content: center; transition: 0.2s; background: transparent; color: #555; 
+}
+.btn-icon:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.btn-icon.edit:hover { color: #60a5fa; background: rgba(96, 165, 250, 0.1); }
+.btn-icon.delete:hover { color: #f87171; background: rgba(248, 113, 113, 0.1); }
 
-/* States */
-.state-cell { text-align: center; padding: 60px !important; color: #666; }
-.error-cell { color: #f87171; }
-.retry-btn { margin-left: 10px; padding: 4px 12px; background: #333; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 12px; }
-.retry-btn:hover { background: #444; }
+/* MODAL */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
+.modal-card { width: 100%; max-width: 420px; padding: 30px; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1); }
+.modal-title { margin: 0 0 25px 0; color: #fff; font-size: 20px; font-weight: 700; }
+.text-accent { color: #22c55e; }
 
-/* Modal */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
-.modal { background: #111; border: 1px solid #333; padding: 30px; width: 400px; border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); animation: modalFade 0.3s ease; }
-.modal h2 { margin-top: 0; color: #fff; font-size: 20px; margin-bottom: 25px; font-weight: 700; }
-.form-group { margin-bottom: 15px; }
-.form-row { display: flex; gap: 15px; }
+.form-group { margin-bottom: 16px; }
+.form-row { display: flex; gap: 16px; }
 .form-group.half { flex: 1; }
-.form-group label { display: block; font-size: 11px; color: #666; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
-.form-group input, .form-group select { width: 100%; box-sizing: border-box; background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 12px; border-radius: 8px; outline: none; transition: 0.2s; font-size: 14px; }
-.form-group input:focus, .form-group select:focus { border-color: #555; background: #111; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 30px; }
-.btn-cancel { background: transparent; color: #888; border: none; cursor: pointer; font-size: 13px; transition: 0.2s; }
-.btn-cancel:hover { color: #fff; }
-.btn-save { background: #fff; color: #000; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: 0.2s; }
-.btn-save:hover { background: #e5e5e5; transform: translateY(-1px); }
+.field-label { display: block; font-size: 11px; color: #888; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
 
-@keyframes modalFade { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+.glass-input { 
+  width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+  padding: 10px 14px; border-radius: 10px; color: #fff; outline: none; transition: 0.2s; font-size: 14px; box-sizing: border-box;
+}
+.glass-input:focus { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
+select.glass-input { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; background-size: 16px; }
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 30px; }
+.primary-btn, .ghost-btn { padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; border: none; }
+.primary-btn { background: #fff; color: #000; }
+.primary-btn:hover { background: #e5e5e5; transform: translateY(-1px); }
+.ghost-btn { background: transparent; color: #888; }
+.ghost-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
+
+.state-cell { text-align: center; padding: 60px !important; color: #666; }
+.modal-fade-enter-active, .modal-fade-leave-active { transition: opacity 0.3s, transform 0.3s; }
+.modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(0.95); }
 </style>

@@ -1,112 +1,241 @@
 <script setup lang="ts">
-// --- ЛОГИКА ---
-const config = useRuntimeConfig()
-const token = useAuthToken()
+import { useAuthStore } from '~/stores/auth'
 
-// Подключаем наш макет с сайдбаром
 definePageMeta({
   layout: 'dashboard' 
 })
 
-// Простой запрос к API для проверки связи
-const { data, error } = await useFetch("/api/ping", {
-  baseURL: config.public.apiBase,
+const auth = useAuthStore()
+
+// Запрос к API
+const { data, error } = await useApiFetch("/api/ping", {
   lazy: true,
   server: false,
 })
 
-// Логика выхода
-const logout = async () => {
-  token.value = null
-  await navigateTo("/login")
+const logout = () => {
+  auth.logout()
 }
 </script>
 
 <template>
-  <div class="clean-workspace">
+  <div class="dashboard-page">
     
-    <div class="api-box">
-      <h3>📡 API Connection Status</h3>
+    <!-- 🔥 ЭФФЕКТ СВЕЧЕНИЯ (GLOW) 🔥 -->
+    <div class="glow glow-1" />
+    <div class="glow glow-2" />
+
+    <div class="content-wrapper">
       
-      <div class="status-row">
-        <span>Status:</span>
-        <span class="value" :style="{ color: data?.status === 'ok' ? '#4caf50' : '#f44336' }">
-          {{ data?.status || 'Loading...' }}
-        </span>
+      <h1 class="welcome-text">
+        Добро пожаловать, <span class="username">{{ auth.user?.name || 'User' }}</span>! 👋
+      </h1>
+      <p class="subtitle">Все системы работают в штатном режиме.</p>
+
+      <!-- Стеклянная карточка статуса -->
+      <div class="glass-card status-card">
+        <div class="card-header">
+          <h3>📡 Статус API</h3>
+          <span class="status-dot" :class="{ online: data?.status === 'ok' }"></span>
+        </div>
+        
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="label">Состояние</span>
+            <span class="value" :style="{ color: data?.status === 'ok' ? '#4caf50' : '#f44336' }">
+              {{ data?.status === 'ok' ? 'Активно' : 'Ошибка' }}
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="label">Сервис</span>
+            <span class="value">{{ data?.service || 'Загрузка...' }}</span>
+          </div>
+
+          <div class="status-item">
+            <span class="label">Время сервера</span>
+            <span class="value time">{{ data?.time || '--:--:--' }}</span>
+          </div>
+        </div>
+
+        <div v-if="error" class="error-box">
+          ❌ Ошибка подключения: {{ error.message }}
+        </div>
       </div>
 
-      <div class="status-row">
-        <span>Service:</span>
-        <span class="value">{{ data?.service || '...' }}</span>
+      <!-- Быстрые действия -->
+      <div class="quick-actions">
+        <NuxtLink to="/dashboard/order" class="action-card">
+          <div class="icon-box">🎮</div>
+          <span>Заказать сервер</span>
+        </NuxtLink>
+        
+        <NuxtLink to="/dashboard/topup" class="action-card">
+          <div class="icon-box">💳</div>
+          <span>Пополнить счет</span>
+        </NuxtLink>
+
+        <button @click="logout" class="action-card logout">
+          <div class="icon-box">🚪</div>
+          <span>Выйти</span>
+        </button>
       </div>
 
-      <div v-if="error" class="error-msg">
-        ❌ Error: {{ error.message }}
-      </div>
     </div>
-
-    <button @click="logout" class="simple-btn">
-      Logout
-    </button>
-
   </div>
 </template>
 
 <style scoped>
-/* --- СТИЛИ --- */
-.clean-workspace {
-  padding-top: 20px;
-  max-width: 400px;
+/* === ОСНОВА СТРАНИЦЫ === */
+.dashboard-page {
+  position: relative;
+  min-height: 100%;
+  width: 100%;
+  overflow: hidden; /* Чтобы свечение не вызывало скролл */
+  padding-bottom: 40px;
 }
 
-.api-box {
-  background: #111;
-  border: 1px solid #333;
-  padding: 20px;
-  border-radius: 8px;
-  font-family: monospace; /* Шрифт как в коде */
-  margin-bottom: 20px;
+/* === КОНТЕНТ (поверх свечения) === */
+.content-wrapper {
+  position: relative;
+  z-index: 10;
+  max-width: 800px;
 }
 
-h3 {
-  margin-top: 0;
+.welcome-text {
+  font-size: 32px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 8px;
+}
+.username {
+  background: linear-gradient(90deg, #ff0055, #0055ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.subtitle {
   color: #888;
-  font-size: 14px;
-  text-transform: uppercase;
-  border-bottom: 1px solid #333;
-  padding-bottom: 10px;
-  margin-bottom: 15px;
+  font-size: 16px;
+  margin-bottom: 40px;
 }
 
-.status-row {
+/* === СВЕЧЕНИЕ (GLOW) === */
+.glow {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.15; /* Прозрачность чуть ниже, чтобы не мешать читать */
+  pointer-events: none;
+  z-index: 0;
+}
+.glow-1 {
+  top: -100px;
+  left: -100px;
+  background: radial-gradient(circle, #ff0055, transparent 70%);
+  animation: floatGlow1 20s linear infinite;
+}
+.glow-2 {
+  bottom: -100px;
+  right: -100px;
+  background: radial-gradient(circle, #0055ff, transparent 70%);
+  animation: floatGlow2 25s linear infinite;
+}
+
+/* Анимации плавания */
+@keyframes floatGlow1 {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(40px, 30px); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes floatGlow2 {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(-40px, -30px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* === КАРТОЧКА СТАТУСА === */
+.glass-card {
+  background: rgba(20, 20, 20, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 30px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
+
+.card-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px;
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+.card-header h3 {
+  margin: 0;
+  font-size: 16px;
   color: #ccc;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #444;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+.status-dot.online {
+  background: #4caf50;
+  box-shadow: 0 0 10px #4caf50;
 }
 
-.value {
-  font-weight: bold;
-  color: #fff;
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media (max-width: 600px) {
+  .status-grid { grid-template-columns: 1fr; }
 }
 
-.error-msg {
-  color: #ff5555;
-  margin-top: 10px;
-  font-size: 12px;
+.status-item { display: flex; flex-direction: column; gap: 4px; }
+.label { font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase; }
+.value { font-size: 15px; color: white; font-weight: 500; font-family: monospace; }
+.time { color: #aaa; }
+
+.error-box {
+  margin-top: 20px; padding: 10px; background: rgba(244, 67, 54, 0.1);
+  border: 1px solid rgba(244, 67, 54, 0.2); border-radius: 8px; color: #f44336; font-size: 13px;
 }
 
-.simple-btn {
-  background: #222;
+/* === БЫСТРЫЕ ДЕЙСТВИЯ === */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.action-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 16px;
+  text-decoration: none;
   color: #ccc;
-  border: 1px solid #444;
-  padding: 8px 16px;
+  transition: all 0.3s ease;
   cursor: pointer;
-  border-radius: 4px;
 }
-
-.simple-btn:hover {
-  background: #333;
+.action-card:hover {
+  background: rgba(255,255,255,0.07);
+  transform: translateY(-2px);
   color: white;
+  border-color: rgba(255,255,255,0.1);
+}
+.icon-box { font-size: 24px; }
+.action-card.logout:hover {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: rgba(244, 67, 54, 0.3);
+  color: #f44336;
 }
 </style>

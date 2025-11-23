@@ -1,81 +1,18 @@
-﻿<script setup lang="ts">
-import { ref } from 'vue'
-import { useAuthStore } from '~/stores/auth'
-
-const auth = useAuthStore()
-const config = useRuntimeConfig()
-
-const email = ref("test@example.com")
-const password = ref("password123")
-const pending = ref(false)
-const errorMessage = ref<string | null>(null)
-const showPassword = ref(false)
-
-const onSubmit = async () => {
-  errorMessage.value = null
-  pending.value = true
-
-  try {
-    // 1. Используем $fetch (важно для вызова по клику)
-    const data = await $fetch<{ token: string; user: any }>("/api/login", {
-      baseURL: config.public.apiBase,
-      method: "POST",
-      body: {
-        email: email.value,
-        password: password.value,
-      },
-    })
-
-    // 2. Если токен пришел — сохраняем его в Store
-    // (Store сам положит его в куки благодаря useCookie)
-    if (data.token) {
-      auth.token = data.token
-      
-      // 3. Сразу загружаем пользователя, чтобы не было пустого экрана
-      await auth.fetchUser()
-      
-      // 4. Переходим в панель
-      await navigateTo("/")
-    }
-    
-  } catch (error: any) {
-    console.error('Login error:', error)
-    // Обработка ошибок
-    if (error.response?._data?.message) {
-        errorMessage.value = error.response._data.message
-    } else {
-        errorMessage.value = "Неверный email или пароль"
-    }
-  } finally {
-    pending.value = false
-  }
-}
-
-// Переход на регистрацию
-const onRegisterClick = async () => {
-  await navigateTo("/register")
-}
-</script>
-
-<template>
+﻿<template>
   <div class="auth-shell">
-    <!-- фон с мягкой подсветкой по краям -->
     <div class="glow glow-1" />
     <div class="glow glow-2" />
-
-    <!-- локальная подсветка прямо за карточкой -->
     <div class="card-glow" />
 
-    <!-- стеклянная карточка -->
     <div class="auth-card">
       <header class="auth-header">
         <div class="auth-badge">
           <span class="badge-dot" />
           <span class="badge-text">SAKURANET</span>
         </div>
-        <h1 class="auth-title">Вход в кабинет</h1>
+        <h1 class="auth-title">Вход в систему</h1>
         <p class="auth-subtitle">
-          Управляйте серверами и балансом в одном месте.
+          Введите данные для продолжения.
         </p>
       </header>
 
@@ -87,6 +24,7 @@ const onRegisterClick = async () => {
             type="email"
             placeholder="user@example.com"
             autocomplete="email"
+            required
           />
         </label>
 
@@ -98,6 +36,7 @@ const onRegisterClick = async () => {
               :type="showPassword ? 'text' : 'password'"
               placeholder="Введите пароль"
               autocomplete="current-password"
+              required
             />
             <button 
               type="button" 
@@ -121,7 +60,6 @@ const onRegisterClick = async () => {
           {{ pending ? "Входим..." : "Войти" }}
         </button>
         
-        <!-- Разделитель -->
         <div class="separator">
           <span>или</span>
         </div>
@@ -129,7 +67,7 @@ const onRegisterClick = async () => {
         <button
           class="ghost-btn"
           type="button"
-          @click.prevent="onRegisterClick"
+          @click="onRegisterClick"
         >
           Зарегистрироваться
         </button>
@@ -147,6 +85,61 @@ const onRegisterClick = async () => {
   </div>
 </template>
 
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useAuthStore } from '~/stores/auth'
+
+const auth = useAuthStore()
+const config = useRuntimeConfig()
+
+const email = ref("test@example.com")
+const password = ref("password123")
+const pending = ref(false)
+const errorMessage = ref<string | null>(null)
+const showPassword = ref(false)
+
+const onSubmit = async () => {
+  errorMessage.value = null
+  pending.value = true
+
+  try {
+    // Используем $fetch для логина
+    const data = await $fetch<{ token: string; user: any }>("/api/login", {
+      baseURL: config.public.apiBase,
+      method: "POST",
+      body: {
+        email: email.value,
+        password: password.value,
+      },
+    })
+
+    if (data.token) {
+      auth.token = data.token
+      
+      // Загружаем пользователя
+      await auth.fetchUser()
+      
+      // Переходим в панель
+      await navigateTo("/dashboard")
+    }
+    
+  } catch (error: any) {
+    console.error('Login error:', error)
+    if (error.response?._data?.message) {
+        errorMessage.value = error.response._data.message
+    } else {
+        errorMessage.value = "Неверный email или пароль"
+    }
+  } finally {
+    pending.value = false
+  }
+}
+
+const onRegisterClick = async () => {
+  await navigateTo("/register")
+}
+</script>
+
 <style scoped>
 /* === LAYOUT === */
 .auth-shell {
@@ -159,7 +152,7 @@ const onRegisterClick = async () => {
   justify-content: center;
   overflow: hidden;
   box-sizing: border-box;
-  padding: 16px; /* Отступы для мобилок */
+  padding: 16px;
 }
 
 /* === BACKGROUND GLOWS === */
@@ -212,7 +205,7 @@ const onRegisterClick = async () => {
   width: 100%;
   max-width: 520px;
   padding: 26px 28px 22px;
-  margin: 0; /* Убрали margin, padding у родителя */
+  margin: 0; 
   border-radius: 26px;
   background: rgba(8, 8, 8, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.07);

@@ -1,6 +1,5 @@
 <template>
   <div class="auth-shell">
-    <!-- Фоны и подсветка -->
     <div class="glow glow-1" />
     <div class="glow glow-2" />
     <div class="card-glow" />
@@ -18,7 +17,6 @@
       </header>
 
       <form class="auth-form" @submit.prevent="onSubmit">
-        <!-- Поле Имя -->
         <label class="field">
           <span class="field-label">Nickname пользователя</span>
           <input
@@ -30,7 +28,6 @@
           />
         </label>
 
-        <!-- Поле Email -->
         <label class="field">
           <span class="field-label">Email</span>
           <input
@@ -42,7 +39,6 @@
           />
         </label>
 
-        <!-- Поле Пароль -->
         <label class="field">
           <span class="field-label">Пароль</span>
           <div class="password-wrapper">
@@ -59,12 +55,10 @@
               @click="showPassword = !showPassword"
               tabindex="-1"
             >
-              <!-- Иконка: Глаз закрыт -->
               <svg v-if="!showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                 <line x1="1" y1="1" x2="23" y2="23"></line>
               </svg>
-              <!-- Иконка: Глаз открыт -->
               <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
@@ -73,7 +67,6 @@
           </div>
         </label>
 
-        <!-- Поле Повтор пароля -->
         <label class="field">
           <span class="field-label">Повторите пароль</span>
           <input
@@ -101,7 +94,6 @@
           У меня уже есть аккаунт
         </button>
 
-        <!-- Блок вывода ошибок -->
         <div v-if="errorMessage" class="error-container">
           <p class="error-text">{{ errorMessage }}</p>
           <details v-if="debugInfo" class="debug-details">
@@ -116,8 +108,14 @@
 </template>
 
 <script setup lang="ts">
-// Важно: Nuxt автоматически импортирует reactive, ref, useApiFetch и navigateTo
+import { reactive, ref } from 'vue'
+import { useAuthStore } from '~/stores/auth'
 
+// Подключаем Store и Config
+const auth = useAuthStore()
+const config = useRuntimeConfig()
+
+// Форма (Reactive, чтобы работало с v-model)
 const form = reactive({
   name: '',
   email: '',
@@ -125,14 +123,14 @@ const form = reactive({
   password_confirmation: ''
 })
 
+// Состояния UI
 const pending = ref(false)
 const errorMessage = ref<string | null>(null)
 const debugInfo = ref<string | null>(null)
 const showPassword = ref(false)
 
-const token = useAuthToken()
-
 const onSubmit = async () => {
+  // 1. Проверка паролей на клиенте
   if (form.password !== form.password_confirmation) {
     errorMessage.value = "Пароли не совпадают"
     return
@@ -142,43 +140,50 @@ const onSubmit = async () => {
   debugInfo.value = null
   pending.value = true
 
-  const { data, error } = await useApiFetch<{ token: string; user: any }>(
-    "/api/register",
-    {
+  try {
+    // 2. Отправляем запрос через $fetch (а не useApiFetch!)
+    // $fetch — это правильный способ делать запросы внутри функций
+    const response: any = await $fetch("/api/register", {
+      baseURL: config.public.apiBase,
       method: "POST",
       body: form,
       headers: {
         "Accept": "application/json"
       }
-    },
-  )
+    })
 
-  pending.value = false
+    // 3. Успех: сервер вернул токен
+    if (response.token) {
+      // Сохраняем токен в Pinia (он сам положит в Cookie)
+      auth.token = response.token
+      
+      // Загружаем пользователя
+      await auth.fetchUser()
+      
+      // Переходим в админку
+      await navigateTo("/dashboard")
+    } else {
+      // Редкий кейс: регистрация прошла, но токена нет -> на логин
+      await navigateTo("/login")
+    }
 
-  if (error.value) {
-    console.log("Auth Error:", error.value)
-    const errData = error.value.data
+  } catch (error: any) {
+    console.error("Auth Error:", error)
+    const errData = error.response?._data
 
-    // 1. Валидация Laravel (422)
+    // Обработка ошибок (422 Validation, 500 Server, etc.)
     if (errData?.errors) {
       const firstKey = Object.keys(errData.errors)[0]
       errorMessage.value = errData.errors[firstKey][0]
-    } 
-    // 2. Сообщение от сервера (наш catch в контроллере)
-    else if (errData?.message) {
+    } else if (errData?.message) {
       errorMessage.value = errData.message
+    } else {
+      errorMessage.value = `Ошибка соединения: ${error.statusCode || 'Неизвестно'}`
+      debugInfo.value = JSON.stringify(error, null, 2)
     }
-    // 3. Другие ошибки (сеть, CORS, 500 без JSON)
-    else {
-      errorMessage.value = `Ошибка соединения: ${error.value.statusCode || 'Неизвестно'}`
-      // Сохраняем полную информацию для отладки
-      debugInfo.value = JSON.stringify(error.value, null, 2)
-    }
-    return
+  } finally {
+    pending.value = false
   }
-
-  token.value = data.value?.token || null
-  await navigateTo("/")
 }
 </script>
 
