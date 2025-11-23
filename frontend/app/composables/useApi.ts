@@ -1,18 +1,34 @@
 // app/composables/useApi.ts
+import { useAuthStore } from '~/stores/auth'
 
-export const useAuthToken = () =>
-  useState<string | null>('authToken', () => null)
-
-export const useApiFetch = async <T>(url: string, options: any = {}) => {
+// 1. $api — для вызова по КЛИКУ (POST, PUT, DELETE)
+// Используй это в handleSubmit, deleteProduct и т.д.
+export const $api = async <T>(request: string, options: any = {}) => {
   const config = useRuntimeConfig()
-  const token = useAuthToken()
-
-  return await useFetch<T>(url, {
+  const auth = useAuthStore()
+  
+  return await $fetch<T>(request, {
     baseURL: config.public.apiBase,
     ...options,
     headers: {
       ...(options.headers || {}),
-      ...(token.value ? { Authorization: `Bearer ${token.value}` } : {}),
+      ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+    },
+  })
+}
+
+// 2. useApiFetch — ТОЛЬКО для загрузки данных при старте (GET)
+// Используй это внутри onMounted или просто в script setup
+export const useApiFetch = <T>(url: string, options: any = {}) => {
+  const config = useRuntimeConfig()
+  const auth = useAuthStore()
+
+  return useFetch<T>(url, {
+    baseURL: config.public.apiBase,
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
     },
   })
 }

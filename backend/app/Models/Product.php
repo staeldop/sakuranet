@@ -15,12 +15,11 @@ class Product extends Model
         'country',
         'game_type',
         'price',
-        'attributes'
+        'specs', // 🔥 ПЕРЕИМЕНОВАЛИ (было attributes)
     ];
 
-    // Автоматически превращает JSON из базы в массив PHP и наоборот
     protected $casts = [
-        'attributes' => 'array',
-        'price' => 'decimal:2'
+        'specs' => 'array', // 🔥 ПЕРЕИМЕНОВАЛИ
+        'price' => 'decimal:2',
     ];
 }

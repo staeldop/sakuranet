@@ -60,9 +60,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/users/{id}', [UserController::class, 'update']);
         Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
-        // Управление товарами (Создание и Удаление)
-        Route::post('/products', [ProductController::class, 'store']);
-        Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+        // Управление товарами
+        Route::post('/products', [ProductController::class, 'store']);      // Создать
+        Route::put('/products/{id}', [ProductController::class, 'update']); // Обновить
+        Route::delete('/products/{id}', [ProductController::class, 'destroy']); // Удалить
     });
 
 });

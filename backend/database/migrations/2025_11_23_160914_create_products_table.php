@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('country')->nullable(); // RU, DE, FI
             $table->string('game_type')->nullable(); // gaming, coding
             $table->decimal('price', 10, 2);
-            $table->json('attributes')->nullable(); // Здесь будем хранить характеристики (CPU, RAM и т.д.)
+            $table->json('specs')->nullable(); // 🔥 ПЕРЕИМЕНОВАЛИ (было attributes)
             $table->timestamps();
         });
     }
