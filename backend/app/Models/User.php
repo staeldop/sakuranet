@@ -20,9 +20,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',    // <--- Должно быть здесь
-        'avatar',  // <--- Должно быть здесь
-        'balance', // <--- ОБЯЗАТЕЛЬНО ДОБАВЬ ЭТО!
+        'role',    // Роль (user/admin)
+        'avatar',  // Ссылка на аватарку
+        'balance', // Баланс пользователя
     ];
 
     /**
@@ -43,6 +43,14 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
-        'balance' => 'decimal:2', // Опционально: приводить к числу с 2 знаками
+        'balance' => 'decimal:2', // Приводим баланс к формату 0.00
     ];
+
+    /**
+     * Связь с услугами (серверами) пользователя.
+     */
+    public function services()
+    {
+        return $this->hasMany(Service::class);
+    }
 }
