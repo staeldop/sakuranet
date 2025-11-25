@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useApiFetch } from '~/composables/useApi' // <-- ИМПОРТ API
+import { useApiFetch } from '~/composables/useApi' 
 
-// --- 1. ИМПОРТЫ ---
 import IconGamepad from '~/assets/icons/gamepad.svg?component'
 import IconCloud from '~/assets/icons/cloud.svg?component'
 import IconServer from '~/assets/icons/server.svg?component'
-
 import IconCpu from '~/assets/icons/cpu.svg?component'
 import IconRam from '~/assets/icons/ram.svg?component'
 import IconDisk from '~/assets/icons/disk.svg?component'
 import IconSword from '~/assets/icons/sword.svg?component'
 import IconCode from '~/assets/icons/code.svg?component'
-
 import imgFlagRU from '~/assets/flags/ru.png'
 import imgFlagDE from '~/assets/flags/de.png'
 import imgFlagFI from '~/assets/flags/fi.png'
@@ -21,7 +18,6 @@ definePageMeta({
   layout: 'dashboard'
 })
 
-// --- 2. СЛОВАРИ ---
 const categoryIcons: Record<string, any> = {
   gaming: IconGamepad,
   virtual: IconCloud,
@@ -51,7 +47,6 @@ const attrLabels: Record<string, string> = {
   'Env': 'Защита от DDoS'
 }
 
-// --- СОСТОЯНИЕ ---
 const activeCategory = ref('gaming')
 const activeCountry = ref('RU')
 const activeGameType = ref('gaming')
@@ -67,10 +62,8 @@ const setCategory = (cat: string) => {
   }
 }
 
-// --- ДАННЫЕ ---
 const products = ref([]) 
 
-// ЗАГРУЗКА ТОВАРОВ С БЭКЕНДА
 onMounted(async () => {
   try {
     const { data } = await useApiFetch<any[]>('/api/products')
@@ -85,12 +78,8 @@ onMounted(async () => {
 const filteredProducts = computed(() => {
   return products.value.filter((product: any) => {
     if (product.category !== activeCategory.value) return false
-    
     if (activeCategory.value === 'gaming') {
-      // Проверка страны (учитываем, что в БД может быть null)
       if (activeCountry.value && product.country !== activeCountry.value) return false
-      
-      // ВАЖНО: В базе поле называется game_type (snake_case), а не gameType
       if (activeGameType.value && product.game_type !== activeGameType.value) return false
     }
     return true
@@ -102,7 +91,6 @@ const animationKey = computed(() => {
 })
 
 const getCardIcon = (product: any) => {
-  // ВАЖНО: Проверяем game_type из базы
   if (product.game_type === 'coding') return IconCode
   return categoryIcons[product.category]
 }
@@ -220,164 +208,62 @@ const getCardIcon = (product: any) => {
 </template>
 
 <style scoped>
-/* ================================================= */
-/* ФИНАЛЬНАЯ МИКРО-КОРРЕКТИРОВКА МАСШТАБА */
-/* ================================================= */
-
-.container-custom { width: 100%; max-width: 1100px; /* Вернули к исходному */ margin: 0; padding-bottom: 80px; padding-top: 0; }
-/* Вернули к исходному */
+.container-custom { width: 100%; max-width: 1100px; margin: 0; padding-bottom: 80px; padding-top: 0; }
 .page-title { font-size: 24px; font-weight: 700; color: white; margin-top: 0; margin-bottom: 4px; line-height: 1.2; }
-/* Скорректировано */
 .page-subtitle { color: #737373; font-size: 13px; margin-top: 0; margin-bottom: 30px; }
 
-/* НАВИГАЦИЯ */
-/* Скорректировано */
 .nav-btn { background: transparent; border: none; padding: 0; display: flex; align-items: center; gap: 10px; color: #737373; font-size: 16px; font-weight: 500; cursor: pointer; transition: color 0.3s ease; margin: 0; }
 .nav-btn:hover, .nav-btn.active { color: #ffffff; }
-/* ИЗМЕНЕНИЕ: Сделали иконку СВЕТЛО-СЕРОЙ (#d4d4d4) */
-.nav-icon { 
-  width: 20px; 
-  height: 20px; 
-  fill: none; 
-  stroke: #d4d4d4; /* СВЕТЛО-СЕРЫЙ */
-  color: #d4d4d4; /* СВЕТЛО-СЕРЫЙ */
-  stroke-width: 1.5; 
-}
+.nav-icon { width: 20px; height: 20px; fill: none; stroke: #d4d4d4; color: #d4d4d4; stroke-width: 1.5; }
 
-/* ФИЛЬТРЫ */
-.filter-bar { display: flex; align-items: center; margin-bottom: 30px; /* Скорректировано */ animation: fadeIn 0.6s ease-out; }
-/* Вернули к исходному */
+.filter-bar { display: flex; align-items: center; margin-bottom: 30px; animation: fadeIn 0.6s ease-out; }
 .filter-btn { background: transparent; border: none; padding: 0; color: #525252; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: color 0.3s ease; margin: 0; }
 .filter-btn:hover, .filter-btn.active { color: #ffffff; }
-
-/* ФЛАГ */
-.flag-img { 
-  width: 18px; 
-  height: auto; 
-  border-radius: 2px; 
-  display: block; 
-  opacity: 0.4; 
-  transition: opacity 0.3s ease; 
-}
-/* ФИКС: Делаем флаг ярким (opacity: 1) без тени при активности */
-.filter-btn.active .flag-img { 
-  opacity: 1; 
-}
-/* Сохраняем осветление при наведении */
-.filter-btn:hover .flag-img { opacity: 1; }
-
-/* Остальные фильтры */
+.flag-img { width: 18px; height: auto; border-radius: 2px; display: block; opacity: 0.4; transition: opacity 0.3s ease; }
+.filter-btn.active .flag-img, .filter-btn:hover .flag-img { opacity: 1; }
 .type-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; opacity: 0.5; transition: opacity 0.4s; }
 .filter-btn.active .type-icon { opacity: 1; }
 .divider { width: 1px; height: 24px; background: #333; margin: 0 30px; display: none; }
 @media (min-width: 768px) { .divider { display: block; } }
 
-/* СЕТКА */
-.products-grid { 
-  display: grid; 
-  grid-template-columns: 1fr; 
-  gap: 24px; /* Вернули к исходному */
-  position: relative; 
-  align-items: start;
-}
+.products-grid { display: grid; grid-template-columns: 1fr; gap: 24px; position: relative; align-items: start; }
 @media (min-width: 768px) { .products-grid { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 1024px) { .products-grid { grid-template-columns: 1fr 1fr 1fr; } }
 
-.product-card-wrapper { } 
-
-.product-card {
-  position: relative; background: #050505; border: 1px solid #1a1a1a; border-radius: 16px; /* Вернули к исходному */
-  padding: 24px; /* Вернули к исходному */
-  overflow: hidden; 
-  display: flex; flex-direction: column; 
-  transition: border-color 0.3s ease;
-}
+.product-card { position: relative; background: #050505; border: 1px solid #1a1a1a; border-radius: 16px; padding: 24px; overflow: hidden; display: flex; flex-direction: column; transition: border-color 0.3s ease; }
 .product-card:hover { border-color: #333; }
-
-/* ИЗМЕНЕНИЕ: УВЕЛИЧЕННАЯ ЯРКОСТЬ СВЕЧЕНИЯ */
-.glow-purple-top { 
-  position: absolute; 
-  top: -60px; right: -60px; 
-  width: 220px; height: 220px; 
-  /* Увеличен цвет градиента до 0.4 */
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, transparent 70%); 
-  filter: blur(50px); 
-  opacity: 0.6; /* Увеличена базовая непрозрачность */
-  transition: opacity 1.5s ease, transform 1.5s ease; 
-  z-index: 0; 
-}
-.product-card:hover .glow-purple-top { opacity: 0.9; transform: scale(1.2); /* Увеличена непрозрачность при наведении */ }
-
-.glow-red-bottom { 
-  position: absolute; 
-  bottom: -50px; right: -50px; 
-  width: 200px; height: 200px; 
-  /* Увеличен цвет градиента до 0.25 */
-  background: radial-gradient(circle, rgba(229, 59, 53, 0.25) 0%, transparent 70%); 
-  filter: blur(40px); 
-  opacity: 0.5; /* Увеличена базовая непрозрачность */
-  transition: opacity 1.5s ease, transform 1.5s ease; 
-  z-index: 0; 
-}
-.product-card:hover .glow-red-bottom { opacity: 0.8; transform: scale(1.2); /* Увеличена непрозрачность при наведении */ }
+.glow-purple-top { position: absolute; top: -60px; right: -60px; width: 220px; height: 220px; background: radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, transparent 70%); filter: blur(50px); opacity: 0.6; transition: opacity 1.5s ease, transform 1.5s ease; z-index: 0; }
+.product-card:hover .glow-purple-top { opacity: 0.9; transform: scale(1.2); }
+.glow-red-bottom { position: absolute; bottom: -50px; right: -50px; width: 200px; height: 200px; background: radial-gradient(circle, rgba(229, 59, 53, 0.25) 0%, transparent 70%); filter: blur(40px); opacity: 0.5; transition: opacity 1.5s ease, transform 1.5s ease; z-index: 0; }
+.product-card:hover .glow-red-bottom { opacity: 0.8; transform: scale(1.2); }
 
 .card-content { position: relative; z-index: 10; display: flex; flex-direction: column; }
-
-/* ХЕДЕР */
-.card-header { margin-bottom: 4px; /* Вернули к исходному */ width: 100%; }
-.header-left { gap: 12px; /* Вернули к исходному */ width: 100%; }
-/* Вернули к исходному */
+.card-header { margin-bottom: 4px; width: 100%; }
+.header-left { gap: 12px; width: 100%; }
 .cat-icon-box { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; color: #fff; }
-/* Вернули к исходному */
 .main-icon { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-/* Вернули к исходному */
 .product-title { margin: 0; font-size: 20px; font-weight: 700; color: white; letter-spacing: 0.02em; text-transform: lowercase; line-height: 1; padding-top: 3px; }
-
-/* ФЛАГ */
-/* Скорректировано */
 .flag-absolute { position: absolute; top: 24px; right: 24px; z-index: 20; }
-/* Скорректировано */
 .flag-img-header { width: 40px; height: auto; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
 
-/* ЦЕНА */
-.price-block { margin-bottom: 16px; /* Вернули к исходному */ display: flex; align-items: baseline; gap: 2px; }
-/* Скорректировано */
+.price-block { margin-bottom: 16px; display: flex; align-items: baseline; gap: 2px; }
 .price { font-size: 24px; font-weight: 700; color: #a3a3a3; letter-spacing: -0.01em; }
-/* Вернули к исходному */
 .period { color: #737373; font-size: 14px; margin-left: 4px; }
-
-/* СПИСОК ХАРАКТЕРИСТИК */
-.specs-list { 
-  display: flex; flex-direction: column; gap: 16px; /* Вернули к исходному */
-}
-.spec-item { display: flex; align-items: center; gap: 12px; } /* Вернули к исходному */
+.specs-list { display: flex; flex-direction: column; gap: 16px; }
+.spec-item { display: flex; align-items: center; gap: 12px; }
 .spec-icon-col { padding-top: 0; color: #e5e5e5; }
-/* Вернули к исходному */
 .spec-svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 .spec-text-col { display: flex; flex-direction: column; }
-/* Вернули к исходному */
 .spec-label { font-size: 11px; color: #737373; margin-bottom: 2px; }
-/* Вернули к исходному */
 .spec-val { font-size: 13px; font-weight: 500; color: #f5f5f5; line-height: 1.4; }
-
-/* КНОПКА */
-.mt-6 { margin-top: 18px; /* Скорректировано */ } 
-
-.buy-btn {
-  display: flex; align-items: center; justify-content: center; 
-  padding: 12px; /* Вернули к исходному */
-  background: transparent; border: 1px solid #262626; border-radius: 10px; /* Вернули к исходному */
-  color: #d4d4d4; font-size: 13px; font-weight: 500; /* Вернули к исходному */
-  text-decoration: none; 
-  transition: all 0.3s ease;
-  white-space: nowrap; 
-  position: relative; z-index: 20;
-}
+.mt-6 { margin-top: 18px; } 
+.buy-btn { display: flex; align-items: center; justify-content: center; padding: 12px; background: transparent; border: 1px solid #262626; border-radius: 10px; color: #d4d4d4; font-size: 13px; font-weight: 500; text-decoration: none; transition: all 0.3s ease; white-space: nowrap; position: relative; z-index: 20; }
 .buy-btn:hover { background: #111; border-color: #404040; color: white; }
 
-/* АНИМАЦИЯ */
+/* 🔥 ВОЗВРАЩЕНИЕ ЛЕГЕНДЫ: ДИАГОНАЛЬНАЯ АНИМАЦИЯ */
 .grid-diag-enter-active, .grid-diag-leave-active { transition: all 0.8s cubic-bezier(0.25, 0.8, 0.25, 1); }
 .grid-diag-leave-to { opacity: 0; transform: translate(20px, 20px); }
 .grid-diag-enter-from { opacity: 0; transform: translate(20px, 20px); }
+
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 </style>

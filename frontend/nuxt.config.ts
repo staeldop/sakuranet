@@ -4,7 +4,6 @@ import svgLoader from 'vite-svg-loader'
 export default defineNuxtConfig({
   css: ["./app/global.css"],
 
-  // 👇 ДОБАВИЛИ PINIA СЮДА
   modules: [
     '@pinia/nuxt',
     '@nuxtjs/tailwindcss',
@@ -16,16 +15,20 @@ export default defineNuxtConfig({
     },
   },
 
-  // Настройки для всего приложения
   app: {
-    // Твоя анимация переходов
-    pageTransition: { name: 'diag', mode: 'out-in' }
+    // 🔥 ВАЖНО: 'page' (как в CSS), а не 'diag'
+    pageTransition: { name: 'page', mode: 'out-in' },
+    layoutTransition: { name: 'layout', mode: 'out-in' }
   },
 
-  // Настройки Vite для работы с SVG
+  // Отключаем встроенные эксперименты, чтобы не мешали нашей CSS-анимации
+  experimental: {
+    viewTransition: false
+  },
+
   vite: {
     plugins: [
-      svgLoader() // Включаем загрузчик SVG
+      svgLoader()
     ]
   },
 

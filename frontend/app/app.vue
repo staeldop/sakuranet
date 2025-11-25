@@ -1,21 +1,16 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/stores/auth'
-
 const auth = useAuthStore()
-// Вся логика загрузки пользователя теперь находится в plugins/auth.ts.
-// Здесь нам ничего вызывать не нужно, просто следим за состоянием загрузки.
 </script>
 
 <template>
-  <div>
-    <!-- Показываем глобальный загрузчик, пока плагин или store грузят данные -->
+  <div class="app-root">
     <Transition name="fade">
       <div v-if="auth.loading" class="global-loader">
         <div class="spinner"></div>
       </div>
     </Transition>
 
-    <!-- Основной макет приложения -->
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
@@ -23,12 +18,22 @@ const auth = useAuthStore()
 </template>
 
 <style>
+/* 🔥 ФИКС: Держать высоту и фон */
+.app-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #000000;
+  color: #ffffff;
+}
+
 /* Глобальные стили */
 body {
   margin: 0;
   background-color: #000;
   color: #fff;
   font-family: 'Segoe UI', sans-serif;
+  overflow-x: hidden; /* Важно для анимаций */
 }
 
 .global-loader {
@@ -44,7 +49,7 @@ body {
   width: 40px; height: 40px;
   border: 3px solid rgba(255,255,255,0.1);
   border-radius: 50%;
-  border-top-color: #fff;
+  border-top-color: #22c55e;
   animation: spin 0.8s linear infinite;
 }
 
