@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router' // Добавляем роутер
 import { useApiFetch } from '~/composables/useApi'
 
-// Иконки
 import IconServer from '~/assets/icons/server.svg?component'
 
 definePageMeta({
   layout: 'dashboard'
 })
 
+const router = useRouter() // Инициализируем роутер
 const services = ref<any[]>([])
 const isLoading = ref(true)
 
@@ -18,19 +19,23 @@ const formatDate = (dateStr: string) => {
 
 const fetchServices = async () => {
   try {
-    // server: false отключает SSR запрос, чтобы не было ошибки 500
-    const { data } = await useApiFetch<any[]>('/api/services', { 
-      server: false 
-    })
-    
+    // server: false отключает SSR, чтобы избежать ошибки 500
+    const { data } = await useApiFetch<any[]>('/api/services', { server: false })
     if (data.value) {
       services.value = data.value
+      console.log('Services loaded:', services.value) // Лог для проверки
     }
   } catch (e) {
     console.error('Ошибка загрузки:', e)
   } finally {
     isLoading.value = false
   }
+}
+
+// 🔥 Функция для перехода на страницу услуги
+const openService = (id: number) => {
+  console.log('Opening service ID:', id) // Лог клика
+  router.push(`/dashboard/services/${id}`)
 }
 
 onMounted(fetchServices)
@@ -58,11 +63,15 @@ onMounted(fetchServices)
 
     <!-- СПИСОК СЕРВЕРОВ -->
     <div v-else class="services-grid">
-      <NuxtLink 
+      <!-- 
+         🔥 ЗАМЕНИЛ NuxtLink НА div C @click 
+         Это гарантирует, что клик будет обработан JS-функцией
+      -->
+      <div 
         v-for="srv in services" 
         :key="srv.id" 
-        :to="`/dashboard/services/${srv.id}`"
-        class="service-card"
+        @click="openService(srv.id)"
+        class="service-card cursor-pointer"
       >
         <div class="card-top">
           <div class="service-icon">
@@ -84,17 +93,13 @@ onMounted(fetchServices)
             <span class="text-white font-mono">{{ srv.ip_address || 'Выдается...' }}</span>
           </div>
           <div class="detail-row">
-            <span>Ядро</span>
-            <span class="text-white">{{ srv.core }}</span>
-          </div>
-          <div class="detail-row">
             <span>Истекает</span>
             <span class="text-white">{{ formatDate(srv.expires_at) }}</span>
           </div>
         </div>
 
         <div class="hover-indicator">Перейти к управлению →</div>
-      </NuxtLink>
+      </div>
     </div>
 
   </div>
@@ -118,14 +123,15 @@ onMounted(fetchServices)
   padding: 24px;
   transition: all 0.3s ease;
   display: flex; flex-direction: column; gap: 24px;
-  text-decoration: none; /* Убираем подчеркивание ссылки */
-  color: inherit;
   position: relative;
   overflow: hidden;
 }
 .service-card:hover { border-color: #404040; transform: translateY(-4px); background: rgba(23, 23, 23, 0.8); }
 
-/* 🔥 ИСПРАВЛЕНО: align-items вместо items-center */
+/* Стили для курсора */
+.cursor-pointer { cursor: pointer; }
+
+/* Исправлено свойство CSS */
 .card-top { display: flex; align-items: center; gap: 16px; }
 
 .service-icon { width: 48px; height: 48px; background: #1a1a1a; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #d4d4d4; }

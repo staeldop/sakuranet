@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useApiFetch } from '~/composables/useApi'
+import { useAuthStore } from '~/stores/auth' // Нам нужен токен
 
 // Иконки
 import IconServer from '~/assets/icons/server.svg?component'
 import IconArrow from '~/assets/icons/arrow-right.svg?component'
 import IconTrash from '~/assets/icons/trash.svg?component'
-import IconCopy from '~/assets/icons/box.svg?component' // Используем box как иконку копирования, если нет специальной
+import IconCopy from '~/assets/icons/box.svg?component'
 
 definePageMeta({
   layout: 'dashboard'
@@ -15,26 +15,34 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore() // Получаем стор для токена
 const service = ref<any>(null)
 const isLoading = ref(true)
 const showPassword = ref(false)
+const config = useRuntimeConfig()
 
-// Загрузка данных
+// Функция загрузки через нативный fetch (чтобы исключить проблемы useApiFetch)
 const fetchService = async () => {
-  // Если ID нет, уходим назад
   if (!route.params.id) return router.push('/dashboard/services')
 
+  isLoading.value = true
   try {
-    // server: false — предотвращает ошибку 500 при SSR
-    const { data, error } = await useApiFetch<any>(`/api/services/${route.params.id}`, {
-      server: false 
+    // Используем $fetch напрямую. Он работает везде.
+    // Важно: указываем полный путь или прокси. Если прокси настроен, то /api/...
+    // Если нет, то config.public.apiBase + ...
+    
+    const response = await $fetch(`/api/services/${route.params.id}`, {
+      headers: {
+        'Authorization': `Bearer ${auth.token}`, // Явно передаем токен
+        'Accept': 'application/json'
+      }
     })
     
-    if (error.value) throw error.value
-    service.value = data.value
+    service.value = response
   } catch (e) {
-    console.error(e)
-    router.push('/dashboard/services')
+    console.error('Ошибка загрузки сервиса (fetch):', e)
+    // Не редиректим сразу, чтобы увидеть ошибку в консоли
+    // router.push('/dashboard/services')
   } finally {
     isLoading.value = false
   }
@@ -45,14 +53,22 @@ const goToPanel = () => {
 }
 
 const copyToClipboard = (text: string) => {
-  navigator.clipboard.writeText(text)
-  alert('Скопировано!')
+  if (text) {
+    navigator.clipboard.writeText(text)
+    alert('Скопировано!')
+  }
 }
 
 const deleteService = async () => {
   if(!confirm('Удалить сервер? Это действие нельзя отменить.')) return
   try {
-    await useApiFetch(`/api/services/${service.value.id}`, { method: 'DELETE' })
+    await $fetch(`/api/services/${service.value.id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${auth.token}`,
+        'Accept': 'application/json'
+      }
+    })
     router.push('/dashboard/services')
   } catch (e) {
     alert('Ошибка удаления')
@@ -65,14 +81,21 @@ const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString('ru-RU')
 }
 
-onMounted(fetchService)
+onMounted(() => {
+  // Небольшая задержка, чтобы убедиться, что роутер готов
+  setTimeout(() => {
+    fetchService()
+  }, 50)
+})
 </script>
 
 <template>
   <div class="container-custom">
     
+    <!-- ЗАГРУЗКА -->
     <div v-if="isLoading" class="loading-screen">
       <div class="spinner"></div>
+      <p class="mt-4 text-gray-400">Загрузка данных сервера...</p>
     </div>
 
     <!-- КОНТЕНТ -->
@@ -192,6 +215,13 @@ onMounted(fetchService)
       </div>
 
     </div>
+    
+    <!-- ОШИБКА (Если сервис не загрузился) -->
+    <div v-else class="flex flex-col items-center justify-center h-[50vh] text-neutral-400">
+       <p class="text-lg">Не удалось загрузить данные услуги.</p>
+       <button @click="router.push('/dashboard/services')" class="mt-4 text-white underline">Вернуться</button>
+    </div>
+    
   </div>
 </template>
 
