@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/stores/auth'
 
-// Импорт иконок как компонентов (Nuxt SVGO или vite-svg-loader)
-// Если у тебя настроен nuxt-svgo, используй ?component
+// Импорт иконок
 import IconUsers from '~/assets/icons/users.svg?component' 
 import IconHome from '~/assets/icons/home.svg?component'
 import IconLogout from '~/assets/icons/logout.svg?component'
 import IconServer from '~/assets/icons/server.svg?component'
-// Можно добавить иконку для дэшборда, если есть, или использовать home
 import IconBox from '~/assets/icons/box.svg?component' 
+import IconTicket from '~/assets/icons/ticket.svg?component'
 
 const auth = useAuthStore()
-const router = useRouter()
 
 const handleLogout = () => {
   auth.logout()
@@ -57,13 +55,11 @@ const handleLogout = () => {
           <span>Товары и Услуги</span>
         </NuxtLink>
         
-        <!-- Пример будущей ссылки -->
-        <!-- 
-        <NuxtLink to="/dashboard/admin/orders" class="nav-item">
-          <IconBox class="icon" />
-          <span>Заказы</span>
-        </NuxtLink> 
-        -->
+        <!-- 🔥 ИСПРАВЛЕНО: Теперь ссылка ведет в правильное место -->
+        <NuxtLink to="/dashboard/admin/tickets" class="nav-item">
+          <IconTicket class="icon" />
+          <span>Тикеты</span>
+        </NuxtLink>
       </div>
     </nav>
 
@@ -218,7 +214,6 @@ const handleLogout = () => {
 .icon {
   width: 18px;
   height: 18px;
-  /* stroke-width: 2px; убрал, т.к. в svg часто уже есть */
   flex-shrink: 0;
 }
 

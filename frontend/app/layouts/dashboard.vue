@@ -14,6 +14,8 @@ import IconBalance from '~/assets/icons/balance.svg?component'
 import IconLogout from '~/assets/icons/logout.svg?component'
 import IconCamera from '~/assets/icons/camera.svg?component'
 import IconTrash from '~/assets/icons/trash.svg?component'
+// Добавили иконку для тикетов
+import IconTicket from '~/assets/icons/ticket.svg?component'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -156,6 +158,7 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
 
         </div>
       </div>
+
       <nav class="nav-list">
         <NuxtLink to="/dashboard" class="nav-item">
           <IconHome />
@@ -173,6 +176,12 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
           <IconBox />
           <span class="link-text">Услуги</span>
         </NuxtLink>
+        
+        <NuxtLink to="/dashboard/tickets" class="nav-item">
+          <IconTicket />
+          <span class="link-text">Поддержка</span>
+        </NuxtLink>
+
         <div class="spacer"></div>
         <div class="section-title">Услуги</div>
         

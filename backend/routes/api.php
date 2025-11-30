@@ -4,7 +4,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\ServiceController; // <--- Импорт контроллера услуг
+use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\Api\TicketController; // <--- Импорт контроллера
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -26,11 +27,7 @@ Route::get('/ping', function () {
 // === ПУБЛИЧНЫЕ РОУТЫ (Без токена) ===
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
-
-// Роут для картинок аватаров
 Route::get('/avatar/{filename}', [AuthController::class, 'getAvatar']);
-
-// 🔥 ТОВАРЫ
 Route::get('/products', [ProductController::class, 'index']);
 
 
@@ -50,16 +47,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/topup', [PaymentController::class, 'topup']);     
     Route::get('/payment/history', [PaymentController::class, 'history']);  
 
-    // 4. 🚀 УСЛУГИ И СЕРВЕРЫ
-    Route::get('/services', [ServiceController::class, 'index']);       // Все услуги
-    Route::post('/services', [ServiceController::class, 'store']);      // Купить
-    Route::get('/services/{id}', [ServiceController::class, 'show']);   // Показать одну (для страницы управления)
-    Route::delete('/services/{id}', [ServiceController::class, 'destroy']); // Удалить/Отменить
+    // 4. УСЛУГИ И СЕРВЕРЫ
+    Route::get('/services', [ServiceController::class, 'index']);
+    Route::post('/services', [ServiceController::class, 'store']);
+    Route::get('/services/{id}', [ServiceController::class, 'show']);
+    Route::delete('/services/{id}', [ServiceController::class, 'destroy']);
 
-    // 5. Старый роут
+    // 5. 🎫 ТИКЕТЫ (ПОДДЕРЖКА) - КЛИЕНТ
+    Route::get('/tickets', [TicketController::class, 'index']);          // Список тикетов
+    Route::post('/tickets', [TicketController::class, 'store']);         // Создать новый
+    Route::get('/tickets/{id}', [TicketController::class, 'show']);      // Посмотреть переписку
+    Route::post('/tickets/{id}/reply', [TicketController::class, 'reply']); // Ответить
+
+    // 6. Старый роут
     Route::get('/me', [AuthController::class, 'me']);
 
     // === АДМИНКА ===
+    // (В реальном проекте добавь middleware 'admin', если есть роль)
     Route::prefix('admin')->group(function () {
         
         // Пользователи
@@ -71,6 +75,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/products', [ProductController::class, 'store']);      
         Route::put('/products/{id}', [ProductController::class, 'update']); 
         Route::delete('/products/{id}', [ProductController::class, 'destroy']); 
+
+        // 🎫 ТИКЕТЫ - АДМИН
+        Route::get('/tickets', [TicketController::class, 'adminIndex']); // Все тикеты
+        Route::get('/tickets/{id}', [TicketController::class, 'adminShow']); // 🔥 НОВЫЙ РОУТ: Просмотр конкретного тикета
+        Route::put('/tickets/{id}/status', [TicketController::class, 'updateStatus']); // Сменить статус
+        Route::post('/tickets/{id}/reply', [TicketController::class, 'adminReply']); // Ответить как админ
     });
 
 });

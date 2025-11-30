@@ -33,4 +33,21 @@ export default defineNuxtConfig({
   },
 
   devtools: { enabled: true },
+
+  // --- 🔥 ДОБАВЛЯЕМ ВОТ ЭТО 🔥 ---
+  // Настройка прокси, чтобы Nuxt знал, где Бэкенд
+  nitro: {
+    devProxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000/api',
+        changeOrigin: true,
+        prependPath: false,
+      }
+    }
+  },
+
+  // Разрешаем CORS для api маршрутов (на всякий случай)
+  routeRules: {
+    '/api/**': { cors: true },
+  }
 })

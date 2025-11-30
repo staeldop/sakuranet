@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue' // Убрал лишние импорты для 3D
 import { useRoute, useRouter } from 'vue-router'
 import { $api } from '~/composables/useApi'
 import ModalConfirm from '~/components/ModalConfirm.vue'
@@ -38,44 +38,7 @@ const isDeleting = ref(false)
 const isRenewLoading = ref(false)
 const copiedField = ref<string | null>(null)
 
-// --- 3D CARD LOGIC ---
-const cardRef = ref<HTMLElement | null>(null)
-const mouseX = ref(0)
-const mouseY = ref(0)
-let rafId: number | null = null
-
-const handleMouseMove = (e: MouseEvent) => {
-  if (!cardRef.value || rafId) return
-  
-  rafId = requestAnimationFrame(() => {
-    if (!cardRef.value) return
-    const rect = cardRef.value.getBoundingClientRect()
-    mouseX.value = e.clientX - rect.left
-    mouseY.value = e.clientY - rect.top
-    rafId = null
-  })
-}
-
-const handleMouseLeave = () => {
-  mouseX.value = 0
-  mouseY.value = 0
-}
-
-const glowStyle = computed(() => ({
-  background: `radial-gradient(400px circle at ${mouseX.value}px ${mouseY.value}px, rgba(255, 255, 255, 0.1), transparent 40%)`
-}))
-
-const tiltStyle = computed(() => {
-  if (!cardRef.value || (mouseX.value === 0 && mouseY.value === 0)) {
-    return { transform: 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)' }
-  }
-  const rect = cardRef.value.getBoundingClientRect()
-  const cx = rect.width / 2
-  const cy = rect.height / 2
-  const rx = (mouseY.value - cy) / 45
-  const ry = -(mouseX.value - cx) / 45
-  return { transform: `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg) scale3d(0.98, 0.98, 0.98)` }
-})
+// --- УДАЛИЛ ЛОГИКУ 3D КАРТОЧКИ (она больше не нужна) ---
 
 // --- API ACTIONS ---
 const fetchService = async () => {
@@ -123,7 +86,6 @@ const formatDateFull = (dateStr?: string) => {
 const goToPanel = () => { window.open('https://panel.sakuranet.space', '_blank') }
 
 onMounted(() => { fetchService() })
-onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 </script>
 
 <template>
@@ -175,41 +137,41 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
           
           <div class="left-col">
             
-            <div 
-              class="cyber-card stagger-1"
-              ref="cardRef"
-              @mousemove="handleMouseMove"
-              @mouseleave="handleMouseLeave"
-              :style="tiltStyle"
-            >
-              <div class="noise-overlay"></div>
-              <div class="scan-line"></div>
-              <div class="card-ambient-glow" :class="service.status"></div>
-              <div class="glow-layer" :style="glowStyle"></div>
+            <div class="server-status-panel stagger-1">
+              <div class="status-glow-bg" :class="service.status"></div>
               
-              <div class="cyber-decor-top">
-                <div class="sim-chip-wrapper">
-                  <div class="sim-chip"></div>
-                  <div class="sim-lines"></div>
+              <div class="panel-content">
+                <div class="status-header">
+                  <span class="panel-label">ТЕКУЩЕЕ СОСТОЯНИЕ</span>
+                  <div class="live-indicator" :class="service.status">
+                    <span class="dot"></span>
+                    <span class="ping-ring"></span>
+                  </div>
                 </div>
-                <span class="card-label">СЕРВЕРНЫЙ УЗЕЛ</span>
-              </div>
 
-              <div class="card-center">
-                <div class="status-big-text" :class="service.status">
-                   {{ service.status === 'active' ? 'В СЕТИ' : 'ОТКЛЮЧЕН' }}
+                <div class="status-main-text" :class="service.status">
+                  {{ service.status === 'active' ? 'ONLINE' : 'OFFLINE' }}
                 </div>
-              </div>
 
-              <div class="cyber-decor-bottom">
-                <div class="status-indicator" :class="service.status">
-                  <div class="status-dot"></div>
-                  <span class="status-text">{{ service.status === 'active' ? 'СИСТЕМА В НОРМЕ' : 'СИСТЕМА ОСТАНОВЛЕНА' }}</span>
+                <div class="status-footer">
+                   <div class="footer-item">
+                     <span class="f-label">АПТАЙМ</span>
+                     <span class="f-val">99.9%</span>
+                   </div>
+                   <div class="vertical-line"></div>
+                   <div class="footer-item">
+                     <span class="f-label">РЕГИОН</span>
+                     <span class="f-val">MSK-1</span>
+                   </div>
+                   <div class="vertical-line"></div>
+                   <div class="footer-item">
+                     <span class="f-label">СИСТЕМА</span>
+                     <span class="f-val ok" v-if="service.status === 'active'">НОРМА</span>
+                     <span class="f-val err" v-else>СТОП</span>
+                   </div>
                 </div>
-                <div class="barcode">||█║▌│█│║▌║▌</div>
               </div>
             </div>
-
             <div class="glass-panel hud-panel stagger-2">
               <div class="hud-corner top-left"></div>
               <div class="hud-corner top-right"></div>
@@ -325,12 +287,132 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 </template>
 
 <style scoped>
-/* --- ГЛАВНЫЙ КОНТЕЙНЕР (ВЕРНУЛИ MARGIN: 0) --- */
+/* --- СТИЛИ ДЛЯ НОВОЙ СТАТУС-КАРТОЧКИ --- */
+.server-status-panel {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  background: rgba(15, 15, 20, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-bottom: 30px;
+  backdrop-filter: blur(10px);
+}
+
+.status-glow-bg {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 200px;
+  height: 200px;
+  filter: blur(80px);
+  opacity: 0.25;
+  transition: 0.5s;
+  border-radius: 50%;
+}
+.status-glow-bg.active { background: #22c55e; }
+.status-glow-bg.stopped { background: #ef4444; }
+
+.panel-content {
+  position: relative;
+  z-index: 2;
+  padding: 24px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.panel-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #555;
+}
+
+.live-indicator {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+}
+.live-indicator .dot {
+  width: 8px;
+  height: 8px;
+  background: #444;
+  border-radius: 50%;
+  z-index: 2;
+}
+.live-indicator .ping-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  opacity: 0;
+  z-index: 1;
+}
+
+/* Анимация статуса */
+.live-indicator.active .dot { background: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.6); }
+.live-indicator.active .ping-ring {
+  background: #22c55e;
+  animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.live-indicator.stopped .dot { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); }
+
+@keyframes ping {
+  75%, 100% { transform: scale(2.5); opacity: 0; }
+}
+
+.status-main-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: #333;
+  transition: 0.3s;
+}
+.status-main-text.active {
+  color: #fff;
+  text-shadow: 0 0 30px rgba(34, 197, 94, 0.3);
+}
+.status-main-text.stopped {
+  color: #ef4444;
+  text-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
+}
+
+.status-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.footer-item { display: flex; flex-direction: column; gap: 2px; }
+.f-label { font-size: 10px; color: #555; font-weight: 600; letter-spacing: 0.5px; }
+.f-val { font-size: 13px; color: #bbb; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+.f-val.ok { color: #22c55e; }
+.f-val.err { color: #ef4444; }
+
+.vertical-line {
+  width: 1px;
+  height: 20px;
+  background: rgba(255,255,255,0.05);
+}
+
+/* --- ОСТАЛЬНЫЕ СТИЛИ (ТВОИ СТАРЫЕ) --- */
 .cyber-page { 
   position: relative; 
   width: 100%; 
   max-width: 1350px; 
-  margin: 0; /* Прижат влево, как ты просил */
+  margin: 0; 
   padding-bottom: 100px; 
   font-family: 'Inter', sans-serif; 
 }
@@ -348,7 +430,7 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* Staggered Entrance Animation */
+/* Animations */
 @keyframes slideUpFade {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
@@ -360,7 +442,7 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 .stagger-4 { animation: slideUpFade 0.6s ease-out 0.4s forwards; opacity: 0; }
 .stagger-5 { animation: slideUpFade 0.6s ease-out 0.5s forwards; opacity: 0; }
 
-/* --- HEADER --- */
+/* HEADER */
 .page-header { margin-bottom: 40px; }
 .back-btn { 
   background: none; border: none; color: #666; display: flex; align-items: center; gap: 8px; 
@@ -371,7 +453,6 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 
 .header-content { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
 
-/* ВЫРАВНИВАНИЕ ID */
 .id-badge { 
   display: flex; align-items: center; gap: 8px; 
   font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-top: 8px; 
@@ -383,7 +464,6 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
   font-size: 42px; font-weight: 900; color: white; margin: 0; letter-spacing: -1px; text-transform: uppercase; line-height: 1;
 }
 
-/* CYBER BTN */
 .cyber-action-btn {
   background: rgba(0,0,0,0.6); border: 1px solid #a855f7; color: #a855f7;
   border-radius: 4px; padding: 0 28px; height: 48px; display: flex; align-items: center; gap: 10px;
@@ -393,55 +473,11 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 .btn-text { font-weight: 800; font-size: 12px; letter-spacing: 1px; z-index: 2; }
 .btn-icon { width: 16px; height: 16px; z-index: 2; }
 
-/* --- 3D CARD (ЦЕНТРИРУЕТСЯ ВНУТРИ СВОЕЙ КОЛОНКИ) --- */
-.cyber-card {
-  position: relative; width: 100%; max-width: 600px; 
-  margin: 0 auto 40px auto; /* Центр внутри левой колонки */
-  height: auto; min-height: 240px;
-  border-radius: 16px; background: #111; border: 1px solid rgba(255, 255, 255, 0.08);
-  overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; padding: 30px;
-  box-shadow: 0 30px 60px rgba(0,0,0,0.5); transform-style: preserve-3d; will-change: transform;
-}
-@media(max-width: 768px) { .cyber-card { transform: none !important; } }
-
-.card-ambient-glow { position: absolute; top: -50%; right: -50%; width: 100%; height: 100%; filter: blur(80px); opacity: 0.3; transition: 1s; }
-.card-ambient-glow.active { background: radial-gradient(circle, #22c55e, transparent 60%); }
-.card-ambient-glow.stopped { background: radial-gradient(circle, #ef4444, transparent 60%); }
-
-.noise-overlay { position: absolute; inset: 0; opacity: 0.07; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"); pointer-events: none; }
-.glow-layer { position: absolute; inset: 0; mix-blend-mode: overlay; pointer-events: none; }
-.scan-line { 
-  position: absolute; top: 0; left: 0; width: 100%; height: 3px; background: rgba(255,255,255,0.1); 
-  box-shadow: 0 0 10px rgba(255,255,255,0.2); animation: scan 6s linear infinite; pointer-events: none; z-index: 2;
-}
-@keyframes scan { 0% { transform: translateY(-100%); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(500px); opacity: 0; } }
-
-.cyber-decor-top { display: flex; justify-content: space-between; align-items: flex-start; z-index: 3; }
-.sim-chip-wrapper { position: relative; width: 44px; height: 32px; }
-.sim-chip { width: 100%; height: 100%; background: linear-gradient(135deg, #bf953f, #fcf6ba, #b38728); border-radius: 6px; }
-.sim-lines { position: absolute; inset: 0; background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzj//v37zwjjgzhhYWGMYAIAIwwMCotB6NUAAAAASUVORK5CYII='); opacity: 0.3; mix-blend-mode: multiply; }
-
-.card-center { text-align: center; z-index: 3; transform: translateZ(30px); }
-.status-big-text {
-  font-family: 'JetBrains Mono', monospace; font-size: 40px; font-weight: 800; letter-spacing: -2px; color: rgba(255,255,255,0.1);
-  transition: 0.3s; position: relative;
-}
-.status-big-text.active { color: white; text-shadow: 0 0 20px rgba(34, 197, 94, 0.6); }
-
-.cyber-decor-bottom { display: flex; justify-content: space-between; align-items: flex-end; z-index: 3; }
-.status-indicator { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: rgba(0,0,0,0.5); border-radius: 50px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(4px); }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #666; }
-.status-indicator.active .status-dot { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
-.status-indicator.active .status-text { color: #22c55e; }
-.status-text { font-size: 10px; font-weight: 700; color: #888; }
-.barcode { font-family: monospace; opacity: 0.5; letter-spacing: 2px; font-size: 14px; }
-
-/* --- PANELS (HUD STYLE) --- */
+/* PANELS */
 .glass-panel {
   background: rgba(10, 10, 10, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(16px); padding: 25px; border-radius: 1px; position: relative;
 }
-/* HUD Corners */
 .hud-panel { border: 1px solid rgba(255,255,255,0.03); border-radius: 0; }
 .hud-corner { position: absolute; width: 10px; height: 10px; border-color: rgba(255,255,255,0.2); border-style: solid; transition: 0.3s; }
 .top-left { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
@@ -458,13 +494,8 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 .form-group label { display: block; font-size: 10px; color: #888; margin-bottom: 8px; font-weight: 600; letter-spacing: 1px; }
 .input-wrapper { display: flex; gap: 0; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; overflow: hidden; transition: 0.3s; }
 .input-wrapper:focus-within { border-color: #a855f7; box-shadow: 0 0 15px rgba(168, 85, 247, 0.1); }
-.glass-input {
-  flex: 1; background: transparent; border: none; padding: 14px; color: #ddd; font-size: 13px; outline: none;
-}
-.copy-btn {
-  background: rgba(255,255,255,0.03); border: none; border-left: 1px solid rgba(255,255,255,0.1);
-  color: #777; cursor: pointer; padding: 0 16px; transition: 0.2s; display: flex; align-items: center; justify-content: center;
-}
+.glass-input { flex: 1; background: transparent; border: none; padding: 14px; color: #ddd; font-size: 13px; outline: none; }
+.copy-btn { background: rgba(255,255,255,0.03); border: none; border-left: 1px solid rgba(255,255,255,0.1); color: #777; cursor: pointer; padding: 0 16px; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
 .copy-btn:hover { background: rgba(255,255,255,0.1); color: white; }
 .text-btn { font-size: 10px; font-weight: 700; width: 60px; }
 .icon-success { color: #22c55e; }
@@ -489,18 +520,12 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 
 .cyber-toggle { width: 44px; height: 24px; position: relative; }
 .toggle-track { width: 100%; height: 100%; background: #222; border-radius: 20px; border: 1px solid #333; transition: 0.3s; }
-.toggle-thumb { 
-  width: 18px; height: 18px; background: #555; border-radius: 50%; position: absolute; top: 3px; left: 3px; 
-  transition: 0.3s cubic-bezier(0.5, 1.5, 0.5, 1); display: flex; align-items: center; justify-content: center;
-}
+.toggle-thumb { width: 18px; height: 18px; background: #555; border-radius: 50%; position: absolute; top: 3px; left: 3px; transition: 0.3s cubic-bezier(0.5, 1.5, 0.5, 1); display: flex; align-items: center; justify-content: center; }
 .cyber-toggle.active .toggle-track { border-color: #a855f7; background: rgba(168, 85, 247, 0.1); }
 .cyber-toggle.active .toggle-thumb { transform: translateX(20px); background: #a855f7; box-shadow: 0 0 10px #a855f7; }
 
 /* BUTTONS */
-.cosmic-btn {
-  position: relative; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
-  color: white; font-weight: 700; font-size: 12px; padding: 14px; border-radius: 6px; cursor: pointer; overflow: hidden; letter-spacing: 1px; transition: 0.3s;
-}
+.cosmic-btn { position: relative; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); color: white; font-weight: 700; font-size: 12px; padding: 14px; border-radius: 6px; cursor: pointer; overflow: hidden; letter-spacing: 1px; transition: 0.3s; }
 .cosmic-btn:hover { border-color: #a855f7; background: rgba(168, 85, 247, 0.05); }
 .btn-glow { position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transform: skewX(-20deg); transition: 0.5s; }
 .cosmic-btn:hover .btn-glow { left: 150%; transition: 0.7s; }
@@ -509,16 +534,10 @@ onUnmounted(() => { if (rafId) cancelAnimationFrame(rafId) })
 .hazard-stripes { position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: repeating-linear-gradient(45deg, #ef4444, #ef4444 10px, transparent 10px, transparent 20px); opacity: 0.6; }
 .danger-title { color: #ef4444; font-size: 12px; font-weight: 800; letter-spacing: 2px; margin-bottom: 6px; }
 .danger-desc { color: #777; font-size: 11px; margin-bottom: 16px; }
-.danger-btn {
-  background: transparent; border: 1px solid #ef4444; color: #ef4444; width: 100%; padding: 12px; border-radius: 4px;
-  font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;
-}
+.danger-btn { background: transparent; border: 1px solid #ef4444; color: #ef4444; width: 100%; padding: 12px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
 .danger-btn:hover { background: #ef4444; color: white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
-.d-icon {
-  width: 16px; height: 16px; min-width: 16px; flex-shrink: 0; margin-right: 8px;
-}
+.d-icon { width: 16px; height: 16px; min-width: 16px; flex-shrink: 0; margin-right: 8px; }
 
-/* Loader */
 .loading-state { height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
 .loader-ring { display: inline-block; position: relative; width: 64px; height: 64px; }
 .loader-ring div { box-sizing: border-box; display: block; position: absolute; width: 50px; height: 50px; margin: 8px; border: 3px solid #a855f7; border-radius: 50%; animation: lds-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite; border-color: #a855f7 transparent transparent transparent; }

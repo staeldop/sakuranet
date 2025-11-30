@@ -1,6 +1,9 @@
 <template>
   <div class="admin-layout">
+    <!-- Наш новый компонент сайдбара -->
     <AdminSidebar />
+
+    <!-- Основной контент -->
     <main class="admin-content">
       <slot />
     </main>
@@ -11,25 +14,28 @@
 .admin-layout {
   display: flex;
   min-height: 100vh;
-  background: #050505; /* Темный фон для админки */
+  width: 100vw;
+  background-color: #000; /* Глубокий черный фон для админки */
   color: #fff;
 }
 
 .admin-content {
   flex-grow: 1;
-  margin-left: 260px; /* Отступ под ширину сайдбара */
+  /* Отступ слева = ширине сайдбара (280px) */
+  margin-left: 280px; 
   padding: 40px;
-  overflow-y: auto;
+  
+  /* Чтобы контент не растягивал страницу вширь при анимациях */
+  overflow-x: hidden; 
+  min-height: 100vh;
 }
 
-/* Адаптив для мобилок (если нужно) */
+/* Адаптив для мобилок (если понадобится) */
 @media (max-width: 768px) {
   .admin-content {
     margin-left: 0;
     padding: 20px;
-    padding-top: 80px; /* Если будет мобильный хедер */
+    padding-top: 80px; /* Отступ под мобильную шапку, если она будет */
   }
-  /* Здесь можно добавить стили для скрытия/показа сайдбара на мобильных,
-     но для админки это часто не критично, так как работают с ПК */
 }
 </style>

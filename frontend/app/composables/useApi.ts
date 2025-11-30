@@ -1,21 +1,24 @@
 // app/composables/useApi.ts
 import { useAuthStore } from '~/stores/auth'
 
-// 1. $api — для вызова внутри функций (POST, PUT, DELETE, или отложенный GET)
-// Используй это внутри функций (const fetch = async () => { await $api(...) })
+// 1. $api — для вызова внутри функций (POST, PUT, DELETE)
 export const $api = async <T>(request: string, options: any = {}) => {
   const config = useRuntimeConfig()
   const auth = useAuthStore()
+
+  // 🔥 ФИКС: Собираем полный URL вручную, чтобы Nuxt не думал, что это страница
+  const url = request.startsWith('http') 
+    ? request 
+    : `${config.public.apiBase}${request}`
   
-  return await $fetch<T>(request, {
-    baseURL: config.public.apiBase,
+  return await $fetch<T>(url, {
     ...options,
+    // baseURL здесь больше не нужен, мы склеили URL выше
     headers: {
-      'Accept': 'application/json', // Гарантирует, что Laravel вернет JSON при ошибке
+      'Accept': 'application/json',
       ...(options.headers || {}),
       ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
     },
-    // Если токен невалиден — выкидываем пользователя
     onResponseError({ response }) {
       if (response.status === 401) {
         auth.logout()
@@ -24,15 +27,20 @@ export const $api = async <T>(request: string, options: any = {}) => {
   })
 }
 
-// 2. useApiFetch — ТОЛЬКО для загрузки данных при старте компонента (Reactive)
-// Используй это прямо в setup: const { data } = await useApiFetch(...)
-export const useApiFetch = <T>(url: string, options: any = {}) => {
+// 2. useApiFetch — для загрузки данных при инициализации (GET)
+export const useApiFetch = <T>(request: string, options: any = {}) => {
   const config = useRuntimeConfig()
   const auth = useAuthStore()
 
+  // 🔥 ФИКС: То же самое — жесткая привязка URL
+  const url = request.startsWith('http') 
+    ? request 
+    : `${config.public.apiBase}${request}`
+
   return useFetch<T>(url, {
-    baseURL: config.public.apiBase,
     ...options,
+    // Добавляем уникальный ключ, чтобы Nuxt не путался при SSR
+    key: url, 
     headers: {
       'Accept': 'application/json',
       ...(options.headers || {}),
