@@ -209,7 +209,7 @@ const getCardIcon = (product: any) => {
 
 <style scoped>
 .container-custom { width: 100%; max-width: 1100px; margin: 0; padding-bottom: 80px; padding-top: 0; }
-.page-title { font-size: 24px; font-weight: 700; color: white; margin-top: 0; margin-bottom: 4px; line-height: 1.2; }
+.page-title { font-size: 32px; font-weight: 700; color: white; margin-top: 0; margin-bottom: 4px; line-height: 1.2; }
 .page-subtitle { color: #737373; font-size: 13px; margin-top: 0; margin-bottom: 30px; }
 
 .nav-btn { background: transparent; border: none; padding: 0; display: flex; align-items: center; gap: 10px; color: #737373; font-size: 16px; font-weight: 500; cursor: pointer; transition: color 0.3s ease; margin: 0; }

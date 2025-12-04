@@ -125,7 +125,7 @@ onMounted(fetchServices)
 
 /* ЗАГОЛОВОК */
 .page-header { margin-bottom: 30px; }
-.page-header h1 { font-size: 24px; font-weight: 700; color: white; margin: 0; }
+.page-header h1 { font-size: 32px; font-weight: 700; color: white; margin: 0; }
 .page-header p { color: #888; font-size: 13px; margin-top: 4px; }
 
 /* СЕТКА КАРТОЧЕК */

@@ -133,7 +133,7 @@ const getIcon = (type: string) => {
 .list-container { position: relative; }
 
 .header-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 25px; }
-.page-title { color: #fff; font-size: 24px; font-weight: 700; margin: 0; }
+.page-title { color: #fff; font-size: 32px; font-weight: 700; margin: 0; }
 .text-btn { background: none; border: none; color: #666; font-size: 13px; cursor: pointer; padding: 5px 10px; transition: 0.2s; }
 .text-btn:hover { color: #fff; }
 .text-btn.delete:hover { color: #ef4444; }
