@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useApiFetch, $api } from '~/composables/useApi'
 import { useAuthStore } from '~/stores/auth'
@@ -11,35 +11,16 @@ const router = useRouter()
 const auth = useAuthStore()
 const ticketId = route.params.id
 
-// --- ЗАГРУЗКА ДАННЫХ ---
+// lazy: false, чтобы данные были сразу
 const { data: ticket, pending, refresh, error } = await useApiFetch<any>(`/api/tickets/${ticketId}`)
 
-// --- ОТПРАВКА СООБЩЕНИЯ ---
 const messageText = ref('')
 const isSending = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
-const sendMessage = async () => {
-  if (!messageText.value.trim()) return
+// --- СКРОЛЛ И РЕСАЙЗ ---
 
-  isSending.value = true
-  try {
-    await $api(`/api/tickets/${ticketId}/reply`, {
-      method: 'POST',
-      body: { message: messageText.value }
-    })
-
-    messageText.value = ''
-    await refresh()
-    scrollToBottom()
-  } catch (e) {
-    alert('Ошибка отправки сообщения')
-  } finally {
-    isSending.value = false
-  }
-}
-
-// --- СКРОЛЛ ВНИЗ ---
 const scrollToBottom = async () => {
   await nextTick()
   if (messagesContainer.value) {
@@ -47,11 +28,70 @@ const scrollToBottom = async () => {
   }
 }
 
-onMounted(() => {
-  if (!pending.value) scrollToBottom()
+const autoResize = () => {
+  const el = textareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 150) + 'px'
+}
+
+watch(() => ticket.value?.messages?.length, () => {
+  scrollToBottom()
 })
 
-// --- СТАТУСЫ ---
+onMounted(() => {
+  if (ticket.value && !pending.value) scrollToBottom()
+})
+
+// --- ОТПРАВКА ---
+
+const sendMessage = async () => {
+  if (!messageText.value.trim()) return
+
+  const textToSend = messageText.value
+  isSending.value = true
+  
+  // 1. Чистим UI сразу
+  messageText.value = ''
+  if (textareaRef.value) textareaRef.value.style.height = '46px'
+
+  // 2. Временное сообщение
+  const tempId = Date.now()
+  const tempMsg = {
+     id: tempId,
+     user_id: auth.user?.id,
+     message: textToSend,
+     created_at: new Date().toISOString(),
+     is_support: false, // Клиент
+     user: { name: 'Вы' }
+  }
+
+  if (ticket.value) {
+      if (!ticket.value.messages) ticket.value.messages = []
+      ticket.value.messages.push(tempMsg)
+      scrollToBottom()
+  }
+
+  try {
+    // 3. Отправляем на сервер
+    await $api(`/api/tickets/${ticketId}/reply`, {
+      method: 'POST',
+      body: { message: textToSend }
+    })
+    // НЕ вызываем refresh(), чтобы не было дерганья
+  } catch (e) {
+    alert('Ошибка отправки сообщения')
+    messageText.value = textToSend 
+    if (ticket.value && ticket.value.messages) {
+       ticket.value.messages = ticket.value.messages.filter((m: any) => m.id !== tempId)
+    }
+  } finally {
+    isSending.value = false
+  }
+}
+
+// --- ХЕЛПЕРЫ ---
+
 const getStatusLabel = (status: string) => {
   if (status === 'open') return 'В обработке'
   if (status === 'answered') return 'Есть ответ'
@@ -59,24 +99,23 @@ const getStatusLabel = (status: string) => {
 }
 
 const formatDate = (iso: string) => {
-  return new Date(iso).toLocaleString('ru-RU', { 
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
-  })
+  try {
+    return new Date(iso).toLocaleString('ru-RU', { 
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+    })
+  } catch (e) { return iso }
 }
 
-// 🔥 НОВАЯ ЛОГИКА ОТОБРАЖЕНИЯ (Client Side) 🔥
-// Если is_support == false (или null/0) -> Это сообщение клиента (Вы) -> Справа
-// Если is_support == true (или 1) -> Это сообщение поддержки -> Слева
 const isMyMessage = (msg: any) => !msg.is_support
 </script>
 
 <template>
   <div class="chat-page">
     
-    <div v-if="pending" class="loading">Загрузка чата...</div>
-    <div v-else-if="error" class="error">Тикет не найден</div>
+    <div v-if="pending" class="center-msg">Загрузка чата...</div>
+    <div v-else-if="error" class="center-msg error">Тикет не найден</div>
 
-    <div v-else class="chat-layout">
+    <div v-else-if="ticket" class="chat-layout">
       
       <div class="chat-header">
         <button @click="router.back()" class="back-btn">← Назад</button>
@@ -95,16 +134,11 @@ const isMyMessage = (msg: any) => !msg.is_support
           class="message-row"
           :class="{ 'my-message': isMyMessage(msg) }"
         >
-          <!-- 
-             Логика классов:
-             isMyMessage (is_support = false) -> Справа (Синее)
-             Иначе (is_support = true) -> Слева (Серое, от Поддержки)
-          -->
           <div class="message-bubble">
             <div class="msg-header">
               <span class="msg-author">
                 <template v-if="isMyMessage(msg)">Вы</template>
-                <template v-else>{{ msg.user.name }} (Support)</template>
+                <template v-else>{{ msg.user?.name || 'Support' }} (Support)</template>
               </span>
               <span class="msg-time">{{ formatDate(msg.created_at) }}</span>
             </div>
@@ -116,9 +150,11 @@ const isMyMessage = (msg: any) => !msg.is_support
       <div class="input-area" v-if="ticket.status !== 'closed'">
         <form @submit.prevent="sendMessage" class="send-form">
           <textarea 
+            ref="textareaRef"
             v-model="messageText" 
             placeholder="Напишите ответ..." 
             rows="1"
+            @input="autoResize"
             @keydown.enter.exact.prevent="sendMessage"
             class="chat-input"
           ></textarea>
@@ -140,8 +176,17 @@ const isMyMessage = (msg: any) => !msg.is_support
 
 <style scoped>
 .chat-page { 
-  height: calc(100vh - 180px); 
-  display: flex; flex-direction: column; max-width: 900px; 
+  height: calc(100vh - 40px); 
+  display: flex; flex-direction: column; max-width: 900px; margin: 0 auto;
+}
+
+.center-msg { 
+  flex-grow: 1; display: flex; align-items: center; justify-content: center; color: #888; 
+}
+.center-msg.error { color: #ef4444; }
+
+.chat-layout {
+  display: flex; flex-direction: column; height: 100%;
 }
 
 .chat-header {
@@ -163,9 +208,11 @@ const isMyMessage = (msg: any) => !msg.is_support
 .status-badge.closed { background: rgba(255,255,255,0.1); color: #888; }
 
 .messages-area {
-  flex-grow: 1; overflow-y: auto; padding-right: 10px;
+  flex-grow: 1; 
+  overflow-y: auto; 
+  padding-right: 10px;
   display: flex; flex-direction: column; gap: 15px;
-  scroll-behavior: smooth;
+  /* Убран scroll-behavior: smooth для мгновенного скролла */
 }
 
 .messages-area::-webkit-scrollbar { width: 6px; }
@@ -197,7 +244,7 @@ const isMyMessage = (msg: any) => !msg.is_support
 .msg-author { font-weight: 700; }
 .msg-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 
-.input-area { margin-top: 20px; }
+.input-area { margin-top: 20px; padding-bottom: 20px; }
 .send-form {
   display: flex; gap: 10px; background: rgba(255,255,255,0.03);
   padding: 10px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05);
@@ -206,11 +253,13 @@ const isMyMessage = (msg: any) => !msg.is_support
 .chat-input {
   flex-grow: 1; background: transparent; border: none; color: white;
   resize: none; outline: none; padding: 10px; font-family: inherit; font-size: 14px;
+  max-height: 150px; overflow-y: auto;
 }
 .send-btn {
   width: 40px; height: 40px; border-radius: 12px; background: #3b82f6; border: none;
   color: white; display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: 0.2s; flex-shrink: 0;
+  margin-bottom: 2px;
 }
 .send-btn:hover { background: #2563eb; transform: scale(1.05); }
 .send-btn:disabled { background: #333; cursor: not-allowed; transform: none; }
@@ -221,6 +270,4 @@ const isMyMessage = (msg: any) => !msg.is_support
   background: rgba(255,50,50,0.1); border: 1px solid rgba(255,50,50,0.2);
   color: #fca5a5; border-radius: 12px; font-size: 14px;
 }
-
-.loading, .error { padding: 40px; text-align: center; color: #666; }
 </style>

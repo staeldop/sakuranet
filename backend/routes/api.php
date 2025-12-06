@@ -6,7 +6,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\Api\TicketController;
-use App\Http\Controllers\Api\NotificationController; // <--- 🔥 ДОБАВИЛ ИМПОРТ
+use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -60,7 +60,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tickets/{id}', [TicketController::class, 'show']);      // Посмотреть переписку
     Route::post('/tickets/{id}/reply', [TicketController::class, 'reply']); // Ответить
 
-    // 6. 🔔 УВЕДОМЛЕНИЯ (КЛИЕНТ) - 🔥 НОВЫЕ РОУТЫ
+    // 6. 🔔 УВЕДОМЛЕНИЯ (КЛИЕНТ)
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
@@ -88,6 +88,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/tickets/{id}', [TicketController::class, 'adminShow']); 
         Route::put('/tickets/{id}/status', [TicketController::class, 'updateStatus']); 
         Route::post('/tickets/{id}/reply', [TicketController::class, 'adminReply']); 
+
+        // 🔔 УВЕДОМЛЕНИЯ - АДМИН (ОТПРАВКА) - 🔥 НОВЫЙ РОУТ
+        Route::post('/notifications/send', [NotificationController::class, 'send']);
     });
 
 });

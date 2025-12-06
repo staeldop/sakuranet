@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       // 👇 ВРЕМЕННО ставим http (пока не настроим SSL)
-      apiBase: "http://billing.sakuranet.space/api", 
+      apiBase: "https://billing.sakuranet.space", 
     },
   },
 
