@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
+import { useApiFetch, $api } from '~/composables/useApi'
 
 definePageMeta({
   layout: 'dashboard'
@@ -10,60 +11,65 @@ interface Notification {
   title: string
   message: string
   type: 'info' | 'success' | 'warning' | 'error'
-  date: string
-  isRead: boolean
+  created_at: string // Laravel возвращает created_at
+  is_read: boolean   // Laravel возвращает snake_case
 }
 
-const notifications = ref<Notification[]>([
-  {
-    id: 1,
-    title: 'Сервер Online',
-    message: 'Ваш сервер [MSK-2] успешно запущен. Все системы работают штатно.',
-    type: 'success',
-    date: new Date().toISOString(),
-    isRead: false
-  },
-  {
-    id: 2,
-    title: 'Финансы',
-    message: 'Поступление средств: +5000₽. Спасибо, что вы с нами!',
-    type: 'info',
-    date: new Date(Date.now() - 3600000).toISOString(),
-    isRead: false
-  },
-  {
-    id: 3,
-    title: 'Сбой авторизации',
-    message: 'Зафиксирована неудачная попытка входа с IP 192.168.1.1',
-    type: 'error',
-    date: new Date(Date.now() - 86400000).toISOString(),
-    isRead: true
-  },
-  {
-    id: 4,
-    title: 'Лимит ресурсов',
-    message: 'Диск заполнен на 85%. Рекомендуем очистить логи.',
-    type: 'warning',
-    date: new Date(Date.now() - 172800000).toISOString(),
-    isRead: true
-  }
-])
+// --- ЗАГРУЗКА ДАННЫХ С БЭКЕНДА ---
+const { data: notificationsData, refresh } = await useApiFetch<Notification[]>('/api/notifications')
+const notifications = computed(() => notificationsData.value || [])
+
+// --- МЕТОДЫ (ТЕПЕРЬ С ЗАПРОСАМИ К API) ---
 
 const formatDate = (isoDate: string) => {
+  if (!isoDate) return ''
   const date = new Date(isoDate)
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 }
 
-const markAsRead = (id: number) => {
+const markAsRead = async (id: number) => {
+  // Оптимистичное обновление интерфейса
   const note = notifications.value.find(n => n.id === id)
-  if (note) note.isRead = true
+  if (note && !note.is_read) {
+    note.is_read = true
+    try {
+      await $api(`/api/notifications/${id}/read`, { method: 'POST' })
+    } catch (e) {
+      console.error('Ошибка обновления статуса', e)
+    }
+  }
 }
 
-const markAllRead = () => notifications.value.forEach(n => n.isRead = true)
-const deleteAll = () => notifications.value = []
-const deleteNotification = (id: number) => notifications.value = notifications.value.filter(n => n.id !== id)
+const markAllRead = async () => {
+  // Сразу обновляем UI
+  notifications.value.forEach(n => n.is_read = true)
+  try {
+    await $api('/api/notifications/read-all', { method: 'POST' })
+  } catch (e) {
+    console.error(e)
+  }
+}
 
-// SVG иконки
+const deleteNotification = async (id: number) => {
+  try {
+    await $api(`/api/notifications/${id}`, { method: 'DELETE' })
+    await refresh() // Обновляем список после удаления
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const deleteAll = async () => {
+  if (!confirm('Удалить все уведомления?')) return
+  try {
+    await $api('/api/notifications', { method: 'DELETE' })
+    await refresh()
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+// SVG иконки (Без изменений)
 const getIcon = (type: string) => {
   if (type === 'success') return 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'
   if (type === 'error') return 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
@@ -89,7 +95,7 @@ const getIcon = (type: string) => {
             v-for="note in notifications" 
             :key="note.id" 
             class="notify-card"
-            :class="[note.type, { 'is-read': note.isRead }]"
+            :class="[note.type, { 'is-read': note.is_read }]"
             @click="markAsRead(note.id)"
           >
             <div class="ambient-glow"></div>
@@ -103,7 +109,8 @@ const getIcon = (type: string) => {
             <div class="card-content">
               <div class="top-row">
                 <span class="card-title">{{ note.title }}</span>
-                <span class="card-date">{{ formatDate(note.date) }}</span>
+                <!-- Используем created_at вместо date -->
+                <span class="card-date">{{ formatDate(note.created_at) }}</span>
               </div>
               <p class="card-message">{{ note.message }}</p>
             </div>
@@ -215,9 +222,6 @@ const getIcon = (type: string) => {
 }
 
 .close-btn svg { width: 18px; height: 18px; }
-
-/* ПРИ НАВЕДЕНИИ НА КАРТОЧКУ (опционально) */
-/* .notify-card:hover .close-btn { color: rgba(255, 255, 255, 0.5); } */
 
 /* ПРИ НАВЕДЕНИИ НА САМУ КНОПКУ */
 .close-btn:hover { 

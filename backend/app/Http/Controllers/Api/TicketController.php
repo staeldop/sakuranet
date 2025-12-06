@@ -25,7 +25,7 @@ class TicketController extends Controller
                 return [
                     'id' => $ticket->id,
                     'subject' => $ticket->subject,
-                    'department' => $this->mapDepartment($ticket->department),
+                    'priority' => $ticket->priority, // 🔥 Теперь возвращаем priority
                     'status' => $ticket->status,
                     'lastUpdate' => $ticket->updated_at->toISOString(),
                     'preview' => $ticket->latestMessage ? $ticket->latestMessage->message : 'Нет сообщений',
@@ -40,7 +40,7 @@ class TicketController extends Controller
     {
         $request->validate([
             'subject' => 'required|string|max:255',
-            'department' => 'required|string|in:tech,billing,other',
+            'priority' => 'required|string|in:low,medium,high', // 🔥 Валидация приоритета
             'message' => 'required|string|min:5',
         ]);
 
@@ -49,7 +49,7 @@ class TicketController extends Controller
             $ticket = Ticket::create([
                 'user_id' => $request->user()->id,
                 'subject' => $request->subject,
-                'department' => $request->department,
+                'priority' => $request->priority, // 🔥 Сохраняем приоритет
                 'status' => 'open',
             ]);
 
@@ -153,15 +153,5 @@ class TicketController extends Controller
         $ticket->touch();
 
         return response()->json(['message' => 'Ответ отправлен']);
-    }
-
-    // Вспомогательный метод для красивых названий отделов
-    private function mapDepartment($key) {
-        $map = [
-            'tech' => 'Технический отдел', 
-            'billing' => 'Бухгалтерия', 
-            'other' => 'Общие вопросы'
-        ];
-        return $map[$key] ?? 'Поддержка';
     }
 }

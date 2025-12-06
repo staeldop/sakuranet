@@ -5,7 +5,8 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ServiceController;
-use App\Http\Controllers\Api\TicketController; // <--- Импорт контроллера
+use App\Http\Controllers\Api\TicketController;
+use App\Http\Controllers\Api\NotificationController; // <--- 🔥 ДОБАВИЛ ИМПОРТ
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -59,11 +60,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tickets/{id}', [TicketController::class, 'show']);      // Посмотреть переписку
     Route::post('/tickets/{id}/reply', [TicketController::class, 'reply']); // Ответить
 
-    // 6. Старый роут
+    // 6. 🔔 УВЕДОМЛЕНИЯ (КЛИЕНТ) - 🔥 НОВЫЕ РОУТЫ
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+    Route::delete('/notifications', [NotificationController::class, 'destroyAll']);
+
+    // 7. Старый роут
     Route::get('/me', [AuthController::class, 'me']);
 
     // === АДМИНКА ===
-    // (В реальном проекте добавь middleware 'admin', если есть роль)
     Route::prefix('admin')->group(function () {
         
         // Пользователи
@@ -77,10 +84,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/products/{id}', [ProductController::class, 'destroy']); 
 
         // 🎫 ТИКЕТЫ - АДМИН
-        Route::get('/tickets', [TicketController::class, 'adminIndex']); // Все тикеты
-        Route::get('/tickets/{id}', [TicketController::class, 'adminShow']); // 🔥 НОВЫЙ РОУТ: Просмотр конкретного тикета
-        Route::put('/tickets/{id}/status', [TicketController::class, 'updateStatus']); // Сменить статус
-        Route::post('/tickets/{id}/reply', [TicketController::class, 'adminReply']); // Ответить как админ
+        Route::get('/tickets', [TicketController::class, 'adminIndex']); 
+        Route::get('/tickets/{id}', [TicketController::class, 'adminShow']); 
+        Route::put('/tickets/{id}/status', [TicketController::class, 'updateStatus']); 
+        Route::post('/tickets/{id}/reply', [TicketController::class, 'adminReply']); 
     });
 
 });

@@ -9,8 +9,8 @@ class Ticket extends Model
 {
     use HasFactory;
 
-    // 🔥 ВОТ ЭТОЙ СТРОКИ НЕ ХВАТАЛО
-    protected $fillable = ['user_id', 'subject', 'department', 'status'];
+    // 🔥 ИЗМЕНИЛ ЗДЕСЬ: заменил department на priority
+    protected $fillable = ['user_id', 'subject', 'priority', 'status'];
 
     public function messages()
     {

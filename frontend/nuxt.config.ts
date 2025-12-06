@@ -1,4 +1,4 @@
-﻿import { defineNuxtConfig } from "nuxt/config"
+import { defineNuxtConfig } from "nuxt/config"
 import svgLoader from 'vite-svg-loader'
 
 export default defineNuxtConfig({
@@ -11,17 +11,16 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase: "http://127.0.0.1:8000",
+      // 👇 ВРЕМЕННО ставим http (пока не настроим SSL)
+      apiBase: "http://billing.sakuranet.space/api", 
     },
   },
 
   app: {
-    // 🔥 ВАЖНО: 'page' (как в CSS), а не 'diag'
     pageTransition: { name: 'page', mode: 'out-in' },
     layoutTransition: { name: 'layout', mode: 'out-in' }
   },
 
-  // Отключаем встроенные эксперименты, чтобы не мешали нашей CSS-анимации
   experimental: {
     viewTransition: false
   },
@@ -29,24 +28,25 @@ export default defineNuxtConfig({
   vite: {
     plugins: [
       svgLoader()
-    ]
+    ],
+    server: {
+      allowedHosts: ['billing.sakuranet.space', 'www.billing.sakuranet.space']
+    }
   },
 
   devtools: { enabled: true },
 
-  // --- 🔥 ДОБАВЛЯЕМ ВОТ ЭТО 🔥 ---
-  // Настройка прокси, чтобы Nuxt знал, где Бэкенд
   nitro: {
     devProxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000/api',
+        // 👇 Исправили порт 8000 на 80 (Nginx)
+        target: 'http://127.0.0.1/api', 
         changeOrigin: true,
         prependPath: false,
       }
     }
   },
 
-  // Разрешаем CORS для api маршрутов (на всякий случай)
   routeRules: {
     '/api/**': { cors: true },
   }
