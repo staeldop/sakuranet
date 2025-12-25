@@ -7,6 +7,8 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\Api\TicketController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Admin\ServerController;
+use App\Http\Controllers\EggController; // 🔥 Убедись, что этот файл создан
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -16,7 +18,6 @@ use Illuminate\Http\Request;
 |--------------------------------------------------------------------------
 */
 
-// Тестовый роут
 Route::get('/ping', function () {
     return response()->json([
         'status'  => 'ok',
@@ -25,72 +26,69 @@ Route::get('/ping', function () {
     ]);
 });
 
-// === ПУБЛИЧНЫЕ РОУТЫ (Без токена) ===
+// === ПУБЛИЧНЫЕ РОУТЫ ===
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/avatar/{filename}', [AuthController::class, 'getAvatar']);
 Route::get('/products', [ProductController::class, 'index']);
 
+// 🔥 РОУТ ДЛЯ ПОЛУЧЕНИЯ ДЕРЕВА ЯДЕР
+Route::get('/eggs/tree', [EggController::class, 'index']);
 
-// === ЗАЩИЩЕННЫЕ РОУТЫ (Требуют токен) ===
+
+// === ЗАЩИЩЕННЫЕ РОУТЫ ===
 Route::middleware('auth:sanctum')->group(function () {
 
-    // 1. Данные пользователя
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
 
-    // 2. Управление аватаром
     Route::post('/user/avatar', [AuthController::class, 'updateAvatar']);
     Route::delete('/user/avatar', [AuthController::class, 'deleteAvatar']);
 
-    // 3. БИЛЛИНГ И ПЛАТЕЖИ
+    // БИЛЛИНГ
     Route::post('/payment/topup', [PaymentController::class, 'topup']);     
     Route::get('/payment/history', [PaymentController::class, 'history']);  
 
-    // 4. УСЛУГИ И СЕРВЕРЫ
+    // УСЛУГИ
     Route::get('/services', [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
     Route::get('/services/{id}', [ServiceController::class, 'show']);
     Route::delete('/services/{id}', [ServiceController::class, 'destroy']);
 
-    // 5. 🎫 ТИКЕТЫ (ПОДДЕРЖКА) - КЛИЕНТ
-    Route::get('/tickets', [TicketController::class, 'index']);          // Список тикетов
-    Route::post('/tickets', [TicketController::class, 'store']);         // Создать новый
-    Route::get('/tickets/{id}', [TicketController::class, 'show']);      // Посмотреть переписку
-    Route::post('/tickets/{id}/reply', [TicketController::class, 'reply']); // Ответить
+    // ТИКЕТЫ
+    Route::get('/tickets', [TicketController::class, 'index']);         
+    Route::post('/tickets', [TicketController::class, 'store']);         
+    Route::get('/tickets/{id}', [TicketController::class, 'show']);      
+    Route::post('/tickets/{id}/reply', [TicketController::class, 'reply']); 
 
-    // 6. 🔔 УВЕДОМЛЕНИЯ (КЛИЕНТ)
+    // УВЕДОМЛЕНИЯ
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications', [NotificationController::class, 'destroyAll']);
 
-    // 7. Старый роут
     Route::get('/me', [AuthController::class, 'me']);
 
     // === АДМИНКА ===
     Route::prefix('admin')->group(function () {
-        
-        // Пользователи
         Route::get('/users', [UserController::class, 'index']);
         Route::put('/users/{id}', [UserController::class, 'update']);
         Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
-        // Товары
         Route::post('/products', [ProductController::class, 'store']);      
         Route::put('/products/{id}', [ProductController::class, 'update']); 
         Route::delete('/products/{id}', [ProductController::class, 'destroy']); 
 
-        // 🎫 ТИКЕТЫ - АДМИН
         Route::get('/tickets', [TicketController::class, 'adminIndex']); 
         Route::get('/tickets/{id}', [TicketController::class, 'adminShow']); 
         Route::put('/tickets/{id}/status', [TicketController::class, 'updateStatus']); 
         Route::post('/tickets/{id}/reply', [TicketController::class, 'adminReply']); 
 
-        // 🔔 УВЕДОМЛЕНИЯ - АДМИН (ОТПРАВКА) - 🔥 НОВЫЙ РОУТ
         Route::post('/notifications/send', [NotificationController::class, 'send']);
-    });
 
+        // Если есть Admin\ServerController
+        Route::get('/servers', [ServerController::class, 'index']);
+    });
 });

@@ -1,427 +1,348 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { $api } from '~/composables/useApi'
+import { $api, useApiFetch } from '~/composables/useApi'
 
-// Подключаем layout админки
+// Иконки
+import IconBox from '~/assets/icons/box.svg?component'
+import IconEdit from '~/assets/icons/ticket.svg?component'
+import IconTrash from '~/assets/icons/trash.svg?component'
+
 definePageMeta({ layout: 'admin' })
 
-// --- СОСТОЯНИЕ ---
-const products = ref([])
-const searchQuery = ref('')
-const isLoading = ref(true)
-
-// Модалка
-const isModalOpen = ref(false)
-const isEditing = ref(false)
-const editId = ref<number | null>(null)
-
-// Данные формы по умолчанию
-const defaultForm = {
-  name: '',
-  category: 'gaming',
-  country: 'RU',
-  gameType: 'gaming',
-  price: '',
-  specs: [
-    { key: 'CPU', value: 'Ryzen 5', icon: 'cpu' },
-    { key: 'RAM', value: '8 GB', icon: 'ram' },
-    { key: 'Disk', value: '50 GB NVMe', icon: 'disk' }
-  ]
+interface Product {
+  id: number
+  name: string
+  category: string
+  price: string
+  specs: { key: string, value: string }[]
+  // Pterodactyl Fields
+  ptero_nest_id?: number
+  ptero_egg_id?: number
+  ptero_docker_image?: string
+  ptero_startup?: string
+  memory_mb?: number
+  disk_mb?: number
+  cpu_limit?: number
+  databases?: number
+  backups?: number
 }
 
-const form = ref(JSON.parse(JSON.stringify(defaultForm)))
+const products = ref<Product[]>([])
+const isLoading = ref(true)
+const isModalOpen = ref(false)
+const isSubmitting = ref(false)
+
+// Форма
+const form = ref<any>({
+  name: '',
+  category: 'gaming',
+  price: 0,
+  specs: [],
+  // Defaults
+  ptero_nest_id: 1, // Minecraft по умолчанию
+  ptero_egg_id: 5,  // Paper по умолчанию
+  ptero_docker_image: 'ghcr.io/pterodactyl/yolks:java_17',
+  ptero_startup: 'java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar server.jar',
+  memory_mb: 1024,
+  disk_mb: 5120,
+  cpu_limit: 100,
+  databases: 0,
+  backups: 0
+})
+
+const editingId = ref<number | null>(null)
+const currentTab = ref<'main' | 'ptero'>('main') // Табы в модалке
 
 // --- ЗАГРУЗКА ---
 const fetchProducts = async () => {
   isLoading.value = true
   try {
-    const data = await $api<any[]>('/api/products')
-    products.value = data
+    const { data } = await useApiFetch<Product[]>('/api/products')
+    if (data.value) products.value = data.value
   } catch (e) {
-    console.error('Ошибка загрузки:', e)
+    console.error(e)
   } finally {
     isLoading.value = false
   }
 }
 
-// --- ПОИСК ---
-const filteredProducts = computed(() => {
-  if (!products.value) return []
-  if (!searchQuery.value) return products.value
-  
-  const query = searchQuery.value.toLowerCase()
-  return products.value.filter((p: any) => 
-    p.name?.toLowerCase().includes(query) || 
-    p.category?.toLowerCase().includes(query) ||
-    String(p.id).includes(query)
-  )
-})
-
-// --- МОДАЛКА И ФОРМА ---
-const openCreateModal = () => {
-  form.value = JSON.parse(JSON.stringify(defaultForm))
-  isEditing.value = false
-  editId.value = null
-  isModalOpen.value = true
+// --- УПРАВЛЕНИЕ СПЕКАМИ (Характеристики) ---
+const addSpec = () => {
+  if (!form.value.specs) form.value.specs = []
+  form.value.specs.push({ key: '', value: '' })
+}
+const removeSpec = (index: number) => {
+  form.value.specs.splice(index, 1)
 }
 
-const openEditModal = (product: any) => {
+// --- МОДАЛКА ---
+const openCreate = () => {
+  editingId.value = null
+  currentTab.value = 'main'
   form.value = {
-    name: product.name,
-    category: product.category,
-    country: product.country || 'RU',
-    gameType: product.game_type || 'gaming',
-    price: product.price,
-    // Загружаем specs или пустой массив
-    specs: product.specs ? JSON.parse(JSON.stringify(product.specs)) : []
+    name: '', category: 'gaming', price: 0, specs: [
+      { key: 'CPU', value: '1 vCore' },
+      { key: 'RAM', value: '2 GB' },
+      { key: 'Disk', value: '20 GB NVMe' }
+    ],
+    ptero_nest_id: 1, ptero_egg_id: 5,
+    ptero_docker_image: 'ghcr.io/pterodactyl/yolks:java_17',
+    ptero_startup: 'java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar server.jar',
+    memory_mb: 2048, disk_mb: 10240, cpu_limit: 100, databases: 0, backups: 0
   }
-  isEditing.value = true
-  editId.value = product.id
   isModalOpen.value = true
 }
 
-const closeModal = () => {
-  isModalOpen.value = false
+const openEdit = (prod: Product) => {
+  editingId.value = prod.id
+  currentTab.value = 'main'
+  // Клонируем объект, чтобы не менять напрямую в списке
+  form.value = JSON.parse(JSON.stringify(prod))
+  // Убедимся, что specs это массив
+  if (!Array.isArray(form.value.specs)) form.value.specs = []
+  isModalOpen.value = true
 }
 
-const handleSubmit = async () => {
+const saveProduct = async () => {
+  isSubmitting.value = true
   try {
-    const payload = {
-      name: form.value.name,
-      category: form.value.category,
-      country: form.value.category === 'gaming' ? form.value.country : null,
-      game_type: form.value.category === 'gaming' ? form.value.gameType : null,
-      price: Number(form.value.price),
-      specs: form.value.specs
-    }
-
-    if (isEditing.value && editId.value) {
-      await $api(`/api/admin/products/${editId.value}`, { method: 'PUT', body: payload })
-    } else {
-      await $api('/api/admin/products', { method: 'POST', body: payload })
-    }
-
-    closeModal()
+    const url = editingId.value ? `/api/products/${editingId.value}` : '/api/products'
+    const method = editingId.value ? 'PUT' : 'POST'
+    
+    await $api(url, { method, body: form.value })
     await fetchProducts()
-  } catch (e: any) {
-    console.error(e)
-    const msg = e.response?._data?.message || e.message || 'Ошибка'
-    alert('Ошибка сервера: ' + msg)
+    isModalOpen.value = false
+  } catch (e) {
+    alert('Ошибка сохранения')
+  } finally {
+    isSubmitting.value = false
   }
 }
 
 const deleteProduct = async (id: number) => {
-  if(!confirm('Удалить этот товар?')) return
-  try {
-    await $api(`/api/admin/products/${id}`, { method: 'DELETE' })
-    await fetchProducts()
-  } catch (e) { 
-    alert('Ошибка удаления') 
-  }
+  if (!confirm('Удалить товар?')) return
+  await $api(`/api/products/${id}`, { method: 'DELETE' })
+  products.value = products.value.filter(p => p.id !== id)
 }
-
-// Хелперы для specs
-const addAttr = () => form.value.specs.push({ key: '', value: '', icon: 'cpu' })
-const removeAttr = (idx: number) => form.value.specs.splice(idx, 1)
 
 onMounted(fetchProducts)
 </script>
 
 <template>
   <div class="admin-shell">
-    <!-- Фоны и подсветка -->
-    <div class="glow glow-1" />
-    <div class="glow glow-2" />
+    <div class="glow glow-blue" />
     
     <div class="content-wrapper">
-      <!-- HEADER -->
-      <div class="page-header">
-        <div class="title-group">
-          <div class="auth-badge mb-2">
-            <span class="badge-dot" />
-            <span class="badge-text">ADMIN PANEL</span>
-          </div>
-          <h1 class="title">База товаров</h1>
-          <div class="subtitle">Управление тарифами и услугами</div>
-        </div>
-        
-        <div class="header-actions">
-          <!-- Поиск -->
-          <div class="search-wrapper">
-            <div class="search-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            </div>
-            <input 
-              v-model="searchQuery" 
-              type="text" 
-              placeholder="Поиск товара..." 
-              class="search-input"
-            >
-          </div>
-          <!-- Кнопка Добавить -->
-          <button @click="openCreateModal" class="btn-add">
-            <span>+ Новый товар</span>
-          </button>
-        </div>
+      <div class="header-section">
+        <h1 class="title">Товары (Тарифы)</h1>
+        <button class="create-btn" @click="openCreate">+ Добавить тариф</button>
       </div>
 
-      <!-- TABLE CARD -->
-      <div class="glass-card table-container">
+      <div class="glass-card">
         <div class="card-glow-top" />
-        
         <table class="data-table">
           <thead>
             <tr>
-              <th width="60">ID</th>
+              <th>ID</th>
               <th>Название</th>
-              <th>Категория</th>
               <th>Цена</th>
-              <th>Детали</th>
-              <th width="100" class="text-right">Действия</th>
+              <th>Категория</th>
+              <th>Ptero Config</th>
+              <th class="text-right">Действия</th>
             </tr>
           </thead>
           <tbody>
-            <!-- 1. ЗАГРУЗКА -->
-            <tr v-if="isLoading">
-              <td colspan="6" class="state-cell">
-                <div class="loader"></div> Загрузка...
-              </td>
-            </tr>
-
-            <!-- 2. ПУСТО -->
-            <tr v-else-if="filteredProducts.length === 0">
-              <td colspan="6" class="state-cell empty-cell">
-                Товары не найдены
-              </td>
-            </tr>
-
-            <!-- 3. СПИСОК -->
-            <tr v-else v-for="p in filteredProducts" :key="p.id" class="data-row">
-              <td class="id-cell">#{{ p.id }}</td>
+            <tr v-for="prod in products" :key="prod.id" class="data-row">
+              <td class="id-cell">#{{ prod.id }}</td>
+              <td class="font-bold text-white">{{ prod.name }}</td>
+              <td class="text-green-400 font-mono">{{ prod.price }} ₽</td>
+              <td><span class="badge">{{ prod.category }}</span></td>
+              
               <td>
-                <div class="item-info">
-                  <span class="item-name">{{ p.name }}</span>
-                </div>
-              </td>
-              <td>
-                <span class="category-badge" :class="p.category">
-                  {{ p.category.toUpperCase() }}
+                <span v-if="prod.ptero_nest_id" class="text-xs text-blue-400">
+                  Nest: {{ prod.ptero_nest_id }} | Egg: {{ prod.ptero_egg_id }}
                 </span>
+                <span v-else class="text-xs text-gray-600">Не настроено</span>
               </td>
-              <td class="price-cell">
-                {{ new Intl.NumberFormat('ru-RU').format(p.price) }} ₽
-              </td>
-              <td class="details-cell">
-                <div class="tags">
-                  <span v-if="p.country" class="mini-tag">{{ p.country }}</span>
-                  <span v-if="p.game_type" class="mini-tag">{{ p.game_type }}</span>
-                  <span class="mini-tag specs-count">{{ p.specs?.length || 0 }} specs</span>
-                </div>
-              </td>
+
               <td class="text-right">
                 <div class="actions">
-                  <button @click="openEditModal(p)" class="btn-icon edit" title="Редактировать">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                  </button>
-                  <button @click="deleteProduct(p.id)" class="btn-icon delete" title="Удалить">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                  </button>
+                  <button @click="openEdit(prod)" class="btn-icon edit"><IconEdit /></button>
+                  <button @click="deleteProduct(prod.id)" class="btn-icon delete"><IconTrash /></button>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+    </div>
 
-      <!-- МОДАЛКА (СОЗДАНИЕ/РЕДАКТИРОВАНИЕ) -->
-      <Transition name="modal-fade">
-        <div v-if="isModalOpen" class="modal-overlay" @click.self="closeModal">
-          <div class="glass-card modal-card">
-            <div class="card-glow-top" />
-            
-            <h2 class="modal-title">
-              {{ isEditing ? `Редактирование #${editId}` : 'Новый товар' }}
-            </h2>
-            
-            <form @submit.prevent="handleSubmit" class="modal-form">
-              <!-- Основные поля -->
-              <div class="form-row">
-                <div class="form-group half">
-                  <label class="field-label">Название</label>
-                  <input v-model="form.name" class="glass-input" placeholder="Minecraft Start" required>
-                </div>
-                <div class="form-group half">
-                  <label class="field-label">Цена (₽)</label>
-                  <input v-model="form.price" type="number" class="glass-input" placeholder="499" required>
-                </div>
-              </div>
+    <div v-if="isModalOpen" class="modal-overlay" @click.self="isModalOpen = false">
+      <div class="glass-card modal-card">
+        <h2 class="modal-title">{{ editingId ? 'Редактировать' : 'Создать' }} тариф</h2>
 
-              <!-- Категории -->
-              <div class="form-row">
-                <div class="form-group third">
-                  <label class="field-label">Категория</label>
-                  <select v-model="form.category" class="glass-input">
-                    <option value="gaming">Gaming</option>
-                    <option value="virtual">Virtual</option>
-                    <option value="dedicated">Dedicated</option>
-                  </select>
-                </div>
-                <div class="form-group third">
-                  <label class="field-label">Страна</label>
-                  <select v-model="form.country" class="glass-input" :disabled="form.category !== 'gaming'">
-                    <option value="RU">Россия</option>
-                    <option value="DE">Германия</option>
-                    <option value="FI">Финляндия</option>
-                  </select>
-                </div>
-                <div class="form-group third">
-                  <label class="field-label">Тип</label>
-                  <select v-model="form.gameType" class="glass-input" :disabled="form.category !== 'gaming'">
-                    <option value="gaming">Game</option>
-                    <option value="coding">Code</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Характеристики -->
-              <div class="specs-section">
-                <div class="specs-header">
-                  <span class="specs-title">Характеристики</span>
-                  <button type="button" @click="addAttr" class="btn-mini-add">+ Добавить</button>
-                </div>
-                
-                <div class="specs-list-scroll">
-                  <div v-for="(attr, idx) in form.specs" :key="idx" class="spec-row">
-                    <input v-model="attr.key" placeholder="CPU" class="glass-input spec-key" />
-                    <input v-model="attr.value" placeholder="Core i9" class="glass-input spec-val" />
-                    <select v-model="attr.icon" class="glass-input spec-icon">
-                      <option value="cpu">CPU</option>
-                      <option value="ram">RAM</option>
-                      <option value="disk">Disk</option>
-                      <option value="code">Code</option>
-                    </select>
-                    <button type="button" @click="removeAttr(idx)" class="btn-icon delete small">✕</button>
-                  </div>
-                  <div v-if="form.specs.length === 0" class="no-specs">Нет характеристик</div>
-                </div>
-              </div>
-              
-              <!-- Кнопки -->
-              <div class="modal-actions">
-                <button type="button" @click="closeModal" class="ghost-btn">Отмена</button>
-                <button type="submit" class="primary-btn">
-                  {{ isEditing ? 'Сохранить' : 'Создать' }}
-                </button>
-              </div>
-            </form>
-          </div>
+        <div class="modal-tabs">
+          <button @click="currentTab = 'main'" :class="{ active: currentTab === 'main' }">Основное</button>
+          <button @click="currentTab = 'ptero'" :class="{ active: currentTab === 'ptero' }">Pterodactyl</button>
         </div>
-      </Transition>
 
+        <div class="modal-body custom-scrollbar">
+          
+          <div v-if="currentTab === 'main'" class="tab-content">
+            <div class="form-group">
+              <label>Название</label>
+              <input v-model="form.name" class="glass-input" placeholder="Например: Minecraft Start">
+            </div>
+            <div class="form-row">
+              <div class="form-group half">
+                <label>Цена (₽/мес)</label>
+                <input v-model.number="form.price" type="number" class="glass-input">
+              </div>
+              <div class="form-group half">
+                <label>Категория</label>
+                <select v-model="form.category" class="glass-input">
+                  <option value="gaming">Gaming</option>
+                  <option value="virtual">VPS</option>
+                  <option value="dedicated">Dedicated</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="specs-section">
+              <label>Характеристики (для отображения на сайте)</label>
+              <div v-for="(spec, idx) in form.specs" :key="idx" class="spec-row">
+                <input v-model="spec.key" placeholder="CPU" class="glass-input sm">
+                <input v-model="spec.value" placeholder="4 Core" class="glass-input">
+                <button @click="removeSpec(idx)" class="remove-btn">✕</button>
+              </div>
+              <button @click="addSpec" class="add-spec-btn">+ Добавить параметр</button>
+            </div>
+          </div>
+
+          <div v-if="currentTab === 'ptero'" class="tab-content">
+            <div class="info-box">
+              Эти ID можно найти в админке Pterodactyl (Nests & Eggs).
+            </div>
+
+            <div class="form-row">
+              <div class="form-group half">
+                <label>Nest ID (Гнездо)</label>
+                <input v-model.number="form.ptero_nest_id" type="number" class="glass-input" placeholder="1 (Minecraft)">
+              </div>
+              <div class="form-group half">
+                <label>Egg ID (Яйцо по умолчанию)</label>
+                <input v-model.number="form.ptero_egg_id" type="number" class="glass-input" placeholder="5 (Paper)">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Docker Image</label>
+              <input v-model="form.ptero_docker_image" class="glass-input text-xs font-mono">
+            </div>
+            <div class="form-group">
+              <label>Startup Command</label>
+              <input v-model="form.ptero_startup" class="glass-input text-xs font-mono">
+            </div>
+
+            <h3 class="sub-title">Лимиты ресурсов</h3>
+            <div class="form-row">
+              <div class="form-group third">
+                <label>RAM (MB)</label>
+                <input v-model.number="form.memory_mb" type="number" class="glass-input">
+              </div>
+              <div class="form-group third">
+                <label>Disk (MB)</label>
+                <input v-model.number="form.disk_mb" type="number" class="glass-input">
+              </div>
+              <div class="form-group third">
+                <label>CPU (%)</label>
+                <input v-model.number="form.cpu_limit" type="number" class="glass-input">
+              </div>
+            </div>
+            <div class="form-row">
+               <div class="form-group half">
+                <label>Databases</label>
+                <input v-model.number="form.databases" type="number" class="glass-input">
+              </div>
+              <div class="form-group half">
+                <label>Backups</label>
+                <input v-model.number="form.backups" type="number" class="glass-input">
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-actions">
+          <button class="ghost-btn" @click="isModalOpen = false">Отмена</button>
+          <button class="primary-btn" @click="saveProduct" :disabled="isSubmitting">
+            {{ isSubmitting ? 'Сохраняем...' : 'Сохранить' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* === ОБЩИЙ ЛЕЙАУТ (Копия из users.vue) === */
-.admin-shell {
-  position: relative; min-height: 100%; width: 100%;
-  overflow: hidden; font-family: 'Inter', sans-serif; padding-bottom: 40px;
-}
-.content-wrapper {
-  position: relative; z-index: 10; max-width: 1200px; margin: 0 auto; padding: 0 20px;
-}
-.glow {
-  position: absolute; width: 600px; height: 600px; border-radius: 50%;
-  filter: blur(100px); opacity: 0.15; pointer-events: none; z-index: 0;
-}
-.glow-1 { top: -10%; left: -10%; background: radial-gradient(circle, #ff0055, transparent 70%); }
-.glow-2 { bottom: -10%; right: 20%; background: radial-gradient(circle, #0055ff, transparent 70%); }
+/* Базовые стили из users.vue + доп. стили для табов и форм */
+.admin-shell { position: relative; min-height: 100vh; width: 100%; padding-bottom: 40px; }
+.content-wrapper { max-width: 1200px; margin: 0 auto; padding: 20px; position: relative; z-index: 10; }
+.glow { position: absolute; width: 600px; height: 600px; filter: blur(100px); opacity: 0.15; pointer-events: none; }
+.glow-blue { top: -10%; left: 20%; background: radial-gradient(circle, #3b82f6, transparent 70%); }
 
-/* === HEADER === */
-.page-header { display: flex; justify-content: space-between; align-items: flex-end; margin: 30px 0; flex-wrap: wrap; gap: 20px; }
-.title { font-size: 28px; font-weight: 700; color: #fff; margin: 0; letter-spacing: -0.5px; }
-.subtitle { color: #888; font-size: 14px; margin-top: 4px; }
-.auth-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 100px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); width: fit-content; }
-.badge-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; }
-.badge-text { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #aaa; }
+.header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+.title { color: #fff; font-size: 28px; font-weight: 700; margin: 0; }
+.create-btn { background: #fff; color: #000; border: none; padding: 10px 20px; border-radius: 100px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+.create-btn:hover { transform: translateY(-2px); box-shadow: 0 0 15px rgba(255,255,255,0.3); }
 
-.header-actions { display: flex; gap: 12px; }
-.btn-add { display: flex; align-items: center; background: #fff; color: #000; border: none; padding: 0 20px; border-radius: 12px; font-weight: 600; font-size: 13px; cursor: pointer; transition: 0.2s; height: 42px; }
-.btn-add:hover { background: #e5e5e5; transform: translateY(-1px); }
+.glass-card { background: rgba(20, 20, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(20px); border-radius: 16px; overflow: hidden; }
+.card-glow-top { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); }
 
-/* === SEARCH === */
-.search-wrapper { position: relative; width: 260px; }
-.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none; }
-.search-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); padding: 11px 12px 11px 38px; border-radius: 12px; color: #fff; outline: none; transition: 0.2s; font-size: 14px; box-sizing: border-box; height: 42px; }
-.search-input:focus { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
+.data-table { width: 100%; border-collapse: collapse; text-align: left; color: #ccc; font-size: 14px; }
+.data-table th { padding: 16px; font-size: 11px; text-transform: uppercase; color: #666; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.data-table td { padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.03); vertical-align: middle; }
+.id-cell { font-family: monospace; color: #555; }
+.badge { background: rgba(255,255,255,0.05); padding: 4px 8px; border-radius: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* === CARD & TABLE === */
-.glass-card { position: relative; background: rgba(20, 20, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(20px); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3); }
-.card-glow-top { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); }
-
-.data-table { width: 100%; border-collapse: collapse; text-align: left; }
-.data-table th { padding: 18px 24px; font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05); }
-.data-table td { padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 14px; color: #ccc; vertical-align: middle; }
-.data-table tr:last-child td { border-bottom: none; }
-.data-row { transition: background 0.2s; }
-.data-row:hover { background: rgba(255,255,255,0.02); }
-
-.id-cell { color: #444; font-family: monospace; font-size: 13px; }
-.item-name { font-weight: 600; color: #fff; }
-.price-cell { font-family: monospace; font-weight: 600; color: #4ade80; }
-.text-right { text-align: right; }
-
-.category-badge { padding: 4px 10px; border-radius: 100px; font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; display: inline-block; border: 1px solid rgba(255,255,255,0.1); }
-.category-badge.gaming { background: rgba(168, 85, 247, 0.1); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.2); }
-.category-badge.virtual { background: rgba(59, 130, 246, 0.1); color: #93c5fd; border-color: rgba(59, 130, 246, 0.2); }
-.category-badge.dedicated { background: rgba(234, 179, 8, 0.1); color: #fde047; border-color: rgba(234, 179, 8, 0.2); }
-
-.tags { display: flex; gap: 6px; flex-wrap: wrap; }
-.mini-tag { font-size: 10px; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; color: #888; }
-.specs-count { color: #555; }
-
-/* ACTIONS */
 .actions { display: flex; gap: 8px; justify-content: flex-end; }
-.btn-icon { width: 32px; height: 32px; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; background: transparent; color: #555; }
+.btn-icon { width: 32px; height: 32px; background: transparent; border: none; color: #555; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 8px; transition: 0.2s; }
 .btn-icon:hover { background: rgba(255,255,255,0.05); color: #fff; }
-.btn-icon.edit:hover { color: #60a5fa; background: rgba(96, 165, 250, 0.1); }
-.btn-icon.delete:hover { color: #f87171; background: rgba(248, 113, 113, 0.1); }
-.btn-icon.small { width: 24px; height: 24px; }
 
 /* MODAL */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
-.modal-card { width: 100%; max-width: 550px; padding: 30px; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1); max-height: 90vh; overflow-y: auto; }
-.modal-title { margin: 0 0 25px 0; color: #fff; font-size: 20px; font-weight: 700; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+.modal-card { width: 100%; max-width: 600px; padding: 30px; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1); max-height: 90vh; display: flex; flex-direction: column; }
+.modal-title { margin: 0 0 20px 0; color: #fff; }
 
-.form-row { display: flex; gap: 16px; margin-bottom: 16px; }
-.form-group.half { flex: 1; }
-.form-group.third { flex: 1; }
-.field-label { display: block; font-size: 11px; color: #888; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
+.modal-tabs { display: flex; gap: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+.modal-tabs button { background: none; border: none; color: #666; padding-bottom: 10px; cursor: pointer; font-weight: 600; border-bottom: 2px solid transparent; transition: 0.2s; }
+.modal-tabs button.active { color: #fff; border-color: #fff; }
+.modal-tabs button:hover { color: #aaa; }
 
-.glass-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); padding: 10px 14px; border-radius: 10px; color: #fff; outline: none; transition: 0.2s; font-size: 14px; box-sizing: border-box; }
-.glass-input:focus { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
-select.glass-input { appearance: none; }
+.modal-body { overflow-y: auto; padding-right: 5px; margin-bottom: 20px; }
+.form-group { margin-bottom: 15px; }
+.form-row { display: flex; gap: 15px; }
+.half { flex: 1; } .third { flex: 1; }
 
-/* SPECS EDITOR */
-.specs-section { background: rgba(255,255,255,0.02); border-radius: 12px; padding: 15px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px; }
-.specs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.specs-title { font-size: 12px; font-weight: 600; color: #ccc; }
-.btn-mini-add { background: none; border: none; color: #4ade80; font-size: 11px; font-weight: 700; cursor: pointer; text-transform: uppercase; }
-.specs-list-scroll { max-height: 150px; overflow-y: auto; padding-right: 5px; }
-.spec-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
-.spec-key { width: 30%; }
-.spec-val { flex-grow: 1; }
-.spec-icon { width: 80px; }
-.no-specs { font-size: 12px; color: #555; text-align: center; padding: 10px; }
+label { display: block; font-size: 11px; color: #666; margin-bottom: 6px; text-transform: uppercase; font-weight: 700; }
+.glass-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 10px; color: #fff; outline: none; transition: 0.2s; box-sizing: border-box; }
+.glass-input:focus { border-color: #555; background: rgba(255,255,255,0.05); }
 
-.modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
-.primary-btn { background: #fff; color: #000; padding: 10px 24px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: 0.2s; }
-.primary-btn:hover { background: #e5e5e5; }
-.ghost-btn { background: transparent; color: #888; padding: 10px 20px; border-radius: 10px; font-size: 13px; cursor: pointer; border: none; transition: 0.2s; }
-.ghost-btn:hover { color: #fff; }
+.specs-section { background: rgba(255,255,255,0.02); padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+.spec-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.spec-row .sm { width: 80px; }
+.remove-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 16px; }
+.remove-btn:hover { color: #ef4444; }
+.add-spec-btn { width: 100%; padding: 8px; border: 1px dashed rgba(255,255,255,0.2); background: none; color: #666; border-radius: 8px; cursor: pointer; font-size: 12px; }
+.add-spec-btn:hover { border-color: #666; color: #ccc; }
 
-.state-cell { text-align: center; padding: 60px !important; color: #666; }
-.modal-fade-enter-active, .modal-fade-leave-active { transition: opacity 0.3s, transform 0.3s; }
-.modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; transform: scale(0.95); }
+.info-box { background: rgba(59, 130, 246, 0.1); color: #60a5fa; padding: 10px; border-radius: 8px; font-size: 12px; margin-bottom: 20px; border: 1px solid rgba(59, 130, 246, 0.2); }
+.sub-title { color: #fff; font-size: 14px; margin: 20px 0 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; }
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; }
+.primary-btn { background: #fff; color: #000; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.ghost-btn { background: none; color: #888; border: none; padding: 10px 20px; cursor: pointer; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 </style>

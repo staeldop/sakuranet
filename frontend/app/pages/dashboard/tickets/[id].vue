@@ -176,7 +176,8 @@ const isMyMessage = (msg: any) => !msg.is_support
 
 <style scoped>
 .chat-page { 
-  height: calc(100vh - 40px); 
+  /* Уменьшил вычет высоты, чтобы чат был выше */
+  height: calc(100vh - 20px); 
   display: flex; flex-direction: column; max-width: 900px; margin: 0 auto;
 }
 
@@ -190,14 +191,15 @@ const isMyMessage = (msg: any) => !msg.is_support
 }
 
 .chat-header {
-  display: flex; align-items: center; gap: 20px; 
-  padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05);
-  margin-bottom: 20px;
+  display: flex; align-items: center; gap: 15px; /* Уменьшил gap */
+  padding-bottom: 15px; /* Уменьшил padding */
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 15px; /* Уменьшил margin */
 }
 .back-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 14px; transition: 0.2s; }
 .back-btn:hover { color: #fff; }
 
-.header-info { display: flex; align-items: center; gap: 15px; }
+.header-info { display: flex; align-items: center; gap: 10px; /* Уменьшил gap */ }
 .ticket-subject { font-size: 18px; color: #fff; margin: 0; font-weight: 600; }
 
 .status-badge {
@@ -212,7 +214,6 @@ const isMyMessage = (msg: any) => !msg.is_support
   overflow-y: auto; 
   padding-right: 10px;
   display: flex; flex-direction: column; gap: 15px;
-  /* Убран scroll-behavior: smooth для мгновенного скролла */
 }
 
 .messages-area::-webkit-scrollbar { width: 6px; }
@@ -244,10 +245,12 @@ const isMyMessage = (msg: any) => !msg.is_support
 .msg-author { font-weight: 700; }
 .msg-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 
-.input-area { margin-top: 20px; padding-bottom: 20px; }
+/* Уменьшил отступы инпута */
+.input-area { margin-top: 15px; padding-bottom: 10px; }
 .send-form {
   display: flex; gap: 10px; background: rgba(255,255,255,0.03);
-  padding: 10px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05);
+  padding: 8px; /* Уменьшил padding */
+  border-radius: 16px; border: 1px solid rgba(255,255,255,0.05);
   align-items: flex-end;
 }
 .chat-input {

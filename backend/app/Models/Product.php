@@ -15,11 +15,25 @@ class Product extends Model
         'country',
         'game_type',
         'price',
-        'specs', // 🔥 ПЕРЕИМЕНОВАЛИ (было attributes)
+        'specs', 
+        
+        // 🔥 Настройки Pterodactyl
+        'ptero_nest_id',      // ID Гнезда
+        'ptero_egg_id',       // ID Яйца
+        'ptero_docker_image', // Docker Image
+        'ptero_startup',      // Startup Command
+        
+        // Лимиты ресурсов
+        'memory',             // ОЗУ (MB)
+        'disk',               // Диск (MB)
+        'cpu',                // Процессор (%)
+        'databases',          // Лимит баз данных
+        'backups',            // Лимит бэкапов
+        'allocations'         // Лимит портов
     ];
 
     protected $casts = [
-        'specs' => 'array', // 🔥 ПЕРЕИМЕНОВАЛИ
+        'specs' => 'array',
         'price' => 'decimal:2',
     ];
 }

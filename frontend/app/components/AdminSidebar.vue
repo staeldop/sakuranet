@@ -53,6 +53,11 @@ const handleLogout = () => {
           <IconServer class="icon" />
           <span>Товары и Услуги</span>
         </NuxtLink>
+
+        <NuxtLink to="/dashboard/admin/servers" class="nav-item">
+          <IconServer class="icon" />
+          <span>Активные серверы</span>
+        </NuxtLink>
         
         <NuxtLink to="/dashboard/admin/tickets" class="nav-item">
           <IconTicket class="icon" />

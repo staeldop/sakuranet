@@ -2,23 +2,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useApiFetch } from '~/composables/useApi'
+import FileExplorer from '~/components/FileExplorer.vue'
 
 // Иконки
-import IconBox from '~/assets/icons/box.svg?component'
-import IconServer from '~/assets/icons/server.svg?component'
-import IconCode from '~/assets/icons/code.svg?component'
-import IconCpu from '~/assets/icons/cpu.svg?component'
-import IconRam from '~/assets/icons/ram.svg?component'
-import IconDisk from '~/assets/icons/disk.svg?component'
-import IconShield from '~/assets/icons/sword.svg?component'
 import IconArrow from '~/assets/icons/arrow-right.svg?component'
-
-// Флаг
+import IconSearch from '~/assets/icons/search.svg?component'
 import imgFlagDE from '~/assets/flags/de.png'
 
-definePageMeta({
-  layout: 'dashboard'
-})
+definePageMeta({ layout: 'dashboard' })
 
 const route = useRoute()
 const router = useRouter()
@@ -28,27 +19,11 @@ const product = ref<any>(null)
 
 // Данные формы
 const serverName = ref('')
-const selectedCore = ref('')
-const selectedPeriod = ref(1)
-
-// Данные для выбора (моки)
-const coresMap: Record<string, { name: string, version: string, icon: any }[]> = {
-  gaming: [
-    { name: 'Minecraft', version: 'Vanilla 1.20.4', icon: IconBox },
-    { name: 'Minecraft', version: 'Paper (Optimized)', icon: IconBox },
-    { name: 'CS 2', version: 'Latest Stable', icon: IconServer },
-    { name: 'Rust', version: 'Oxide Modded', icon: IconServer },
-    { name: 'GTA V', version: 'FiveM', icon: IconServer },
-  ],
-  virtual: [
-    { name: 'Ubuntu', version: '22.04 LTS', icon: IconCode },
-    { name: 'Debian', version: '12 (Bookworm)', icon: IconCode },
-    { name: 'Windows', version: 'Server 2022', icon: IconCode },
-  ],
-  dedicated: [
-    { name: 'Proxmox', version: 'VE 8.1', icon: IconServer },
-  ]
-}
+const selectedPeriod = ref(1) // 1 Месяц по умолчанию
+const selectedEgg = ref<any>(null)
+const selectedNestId = ref<number | null>(null)
+const fileTree = ref<any>({})
+const searchQuery = ref('')
 
 const periods = [
   { months: 1, label: '1 Месяц', discount: 0 },
@@ -57,41 +32,126 @@ const periods = [
   { months: 12, label: '1 Год', discount: 20 },
 ]
 
-// Загрузка данных
-onMounted(async () => {
-  const id = route.query.id
-  if (!id) return router.push('/dashboard/order')
+const IGNORED_PATH_WORDS = ['game_eggs', 'twitch', 'voice_servers', 'other', 'misc', 'software']
 
-  try {
-    // server: false предотвращает ошибку 500 при SSR
-    const { data } = await useApiFetch<any[]>('/api/products', { server: false })
+// --- ЛОГИКА ДЕРЕВА (Без изменений) ---
+const buildTreeCorrected = (nestsData: any[]) => {
+  const root: any = {}
+  const prioritySet = new Set<string>()
+
+  // 1. Собираем приоритеты
+  nestsData.forEach(nest => {
+    nest.attributes.relationships.eggs.data.forEach((egg: any) => {
+      const desc = egg.attributes.description || ''
+      const priorityMatch = desc.match(/\[priority:\s*([^\]]+)\]/i)
+      if (priorityMatch) prioritySet.add(priorityMatch[1].trim().toLowerCase())
+    })
+  })
+
+  // 2. Строим дерево
+  nestsData.forEach(nest => {
+    const nestName = nest.attributes.name
+    const eggs = nest.attributes.relationships.eggs.data
     
-    if (data.value) {
-      product.value = data.value.find((p: any) => p.id == id)
+    if (!eggs || eggs.length === 0) return
+
+    if (!root[nestName]) {
+      root[nestName] = {
+        name: nestName,
+        type: 'folder',
+        children: {},
+        containsSelected: false,
+        isPriority: prioritySet.has(nestName.toLowerCase())
+      }
     }
-    
-    if (!product.value) throw new Error('Товар не найден')
 
-    serverName.value = `Server-${Math.floor(Math.random() * 1000)}`
-    
-    const cores = coresMap[product.value.category] || coresMap['virtual']
-    if (cores.length) selectedCore.value = getCoreKey(cores[0])
+    eggs.forEach((egg: any) => {
+      egg._nestId = nest.attributes.id 
 
-  } catch (e) {
-    console.error(e)
-    router.push('/dashboard/order')
-  } finally {
-    isLoading.value = false
+      const desc = egg.attributes.description || ''
+      const pathMatch = desc.match(/\[PATH:\s*([^\]]+)\]/i)
+      
+      let pathParts: string[] = []
+
+      if (pathMatch) {
+        const rawParts = pathMatch[1].split('>').map((s: string) => s.trim())
+        pathParts = rawParts.filter(part => {
+          const p = part.toLowerCase()
+          return !IGNORED_PATH_WORDS.includes(p) && p !== nestName.toLowerCase()
+        })
+      }
+
+      if (pathParts.length > 0) {
+        const lastFolder = pathParts[pathParts.length - 1].toLowerCase()
+        const eggName = egg.attributes.name.toLowerCase()
+        if (eggName.includes(lastFolder) || lastFolder === eggName) {
+          pathParts.pop()
+        }
+      }
+
+      let currentLevel = root[nestName].children
+
+      pathParts.forEach(part => {
+        if (!currentLevel[part]) {
+          currentLevel[part] = { 
+            name: part, 
+            type: 'folder', 
+            children: {}, 
+            containsSelected: false,
+            isPriority: prioritySet.has(part.toLowerCase()) 
+          }
+        }
+        currentLevel = currentLevel[part].children
+      })
+      
+      currentLevel[egg.attributes.name] = { 
+        name: egg.attributes.name, 
+        type: 'file', 
+        data: egg,
+        isPriority: false 
+      }
+    })
+  })
+  return root
+}
+
+// Фильтрация
+const filterNode = (node: any, query: string): any => {
+  if (node.type === 'file') {
+    return node.name.toLowerCase().includes(query) ? node : null
   }
+  const filteredChildren: any = {}
+  let hasMatchingChildren = false
+  Object.keys(node.children).forEach(key => {
+    const result = filterNode(node.children[key], query)
+    if (result) {
+      filteredChildren[key] = result
+      hasMatchingChildren = true
+    }
+  })
+  if (hasMatchingChildren) {
+    return { ...node, children: filteredChildren, containsSelected: true }
+  }
+  return null
+}
+
+const filteredTree = computed(() => {
+  if (!searchQuery.value) return fileTree.value
+  const query = searchQuery.value.toLowerCase()
+  const result: any = {}
+  Object.keys(fileTree.value).forEach(key => {
+    const filtered = filterNode(fileTree.value[key], query)
+    if (filtered) result[key] = filtered
+  })
+  return result
 })
 
-const getCoreKey = (core: any) => `${core.name} ${core.version}`
+const onSelect = (egg: any) => {
+  selectedEgg.value = egg
+  selectedNestId.value = egg._nestId
+}
 
-const availableCores = computed(() => {
-  if (!product.value) return []
-  return coresMap[product.value.category] || []
-})
-
+// Покупка
 const totalPrice = computed(() => {
   if (!product.value) return 0
   const base = Number(product.value.price)
@@ -99,264 +159,292 @@ const totalPrice = computed(() => {
   return (base * selectedPeriod.value) * (1 - (per?.discount || 0) / 100)
 })
 
-const formatPrice = (val: number) => {
-  return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val)
-}
+const formatPrice = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val)
 
+// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ ПОКУПКИ
 const handleCheckout = async () => {
   if (!serverName.value.trim()) return alert('Введите имя сервера')
+  if (!selectedEgg.value) return alert('Выберите ядро')
+
   isSubmitting.value = true
-  
   try {
-    const { error } = await useApiFetch('/api/services', {
+    // Получаем полный ответ (data), чтобы вытащить пароль
+    const { data, error } = await useApiFetch<any>('/api/services', {
       method: 'POST',
       body: {
         product_id: product.value.id,
         name: serverName.value,
-        core: selectedCore.value,
-        period: selectedPeriod.value
+        period: selectedPeriod.value,
+        egg_id: selectedEgg.value.attributes.id,
+        docker_image: selectedEgg.value.attributes.docker_image,
+        nest_id: selectedNestId.value
       }
     })
 
-    if (error.value) throw error.value
+    if (error.value) {
+      const msg = error.value.data?.message || error.value.message || 'Ошибка при создании'
+      throw new Error(msg)
+    }
 
-    // Успех -> редирект на страницу услуг
-    alert('Услуга успешно активирована!')
-    router.push('/dashboard/services')
+    // Проверяем, пришел ли новый пароль (для новых юзеров Pterodactyl)
+    const newPassword = data.value?.new_user_password
+    
+    if (newPassword) {
+      alert(`Успешно!\n\nВаш аккаунт в панели управления создан.\nПароль: ${newPassword}\n\n(Обязательно сохраните его! Также его можно найти в настройках сервера)`)
+    } else {
+      alert('Сервер успешно оплачен и устанавливается!')
+    }
+
+    // Перенаправляем сразу в настройки созданного сервера
+    if (data.value?.service?.id) {
+       router.push(`/dashboard/services/${data.value.service.id}`)
+    } else {
+       router.push('/dashboard/services')
+    }
+
   } catch (e: any) {
-    const msg = e.data?.message || 'Ошибка создания'
-    alert(msg)
+    alert(e.message || 'Ошибка')
   } finally {
     isSubmitting.value = false
   }
 }
+
+onMounted(async () => {
+  const id = route.query.id
+  if (!id) return router.push('/dashboard/order')
+  try {
+    const { data: prodData } = await useApiFetch<any[]>('/api/products', { server: false })
+    if (prodData.value) product.value = prodData.value.find((p: any) => p.id == id)
+    
+    const { data: treeData } = await useApiFetch<any>('/api/eggs/tree')
+    if (treeData.value && treeData.value.data) {
+      fileTree.value = buildTreeCorrected(treeData.value.data)
+    }
+  } catch (e) { console.error(e) } finally { isLoading.value = false }
+})
 </script>
 
 <template>
-  <div class="container-custom">
-    
-    <div v-if="isLoading" class="loading-wrapper">
-      <div class="spinner"></div>
-    </div>
-
-    <div v-else class="main-content-wrapper">
+  <div class="checkout-page">
+    <div class="content-wrapper">
       
-      <!-- HEADER -->
-      <div class="header-section">
-        <button @click="router.back()" class="back-link">
-          <IconArrow class="icon-arrow" /> Назад к тарифам
-        </button>
-        <h1 class="page-title">Конфигурация</h1>
-        <p class="page-subtitle">Настройте параметры вашего сервера.</p>
+      <div class="header-row">
+        <button @click="router.back()" class="back-link"><IconArrow class="icon-arrow" /> Назад</button>
+        <div class="title-group">
+          <h1 class="page-title">Сборка сервера</h1>
+          <p class="subtitle">Выберите конфигурацию для {{ product?.name }}</p>
+        </div>
       </div>
 
       <div class="checkout-grid">
-        
-        <!-- ЛЕВАЯ КОЛОНКА -->
         <div class="left-column">
           
-          <!-- 1. ИМЯ -->
-          <div class="glass-card">
-            <div class="card-header">
-              <div class="icon-label">
-                <svg class="icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
-                <h2>Название сервера</h2>
-              </div>
-            </div>
-            <input v-model="serverName" type="text" class="custom-input" placeholder="Введите название">
-          </div>
-
-          <!-- 2. ЯДРО -->
-          <div class="glass-card">
-            <div class="card-header">
-              <div class="icon-label">
-                 <svg class="icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
-                 <h2>Выберите ядро</h2>
-              </div>
-            </div>
-            <div class="cores-grid custom-scrollbar">
-              <div 
-                v-for="(core, idx) in availableCores" :key="idx"
-                @click="selectedCore = getCoreKey(core)"
-                class="core-card" :class="{ active: selectedCore === getCoreKey(core) }"
-              >
-                <div class="core-info">
-                  <div class="core-icon-box" :class="{ active: selectedCore === getCoreKey(core) }">
-                    <component :is="core.icon" class="core-svg" />
-                  </div>
-                  <div class="core-text">
-                    <span class="core-name">{{ core.name }}</span>
-                    <span class="core-version">{{ core.version }}</span>
-                  </div>
-                </div>
-                <div class="radio-circle" :class="{ active: selectedCore === getCoreKey(core) }">
-                   <div v-if="selectedCore === getCoreKey(core)" class="radio-dot"></div>
-                </div>
-              </div>
+          <div class="section-block">
+            <h2 class="block-title">1. Название сервера</h2>
+            <div class="input-wrapper">
+              <input v-model="serverName" class="modern-input" placeholder="Например: Survival Server">
             </div>
           </div>
 
-          <!-- 3. ПЕРИОД -->
-          <div class="glass-card">
-            <div class="card-header">
-              <div class="icon-label">
-                 <svg class="icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                 <h2>Период оплаты</h2>
+          <div class="section-block">
+            <div class="block-header">
+              <h2 class="block-title">2. Программное обеспечение</h2>
+              <div class="search-box">
+                <IconSearch class="search-icon"/>
+                <input v-model="searchQuery" placeholder="Поиск (Paper, Vanilla)..." class="search-input">
               </div>
             </div>
-            <div class="periods-grid">
-              <button 
-                v-for="per in periods" :key="per.months"
-                @click="selectedPeriod = per.months"
-                class="period-btn" :class="{ active: selectedPeriod === per.months }"
-              >
-                <span class="period-label">{{ per.label }}</span>
-                <span v-if="per.discount > 0" class="discount-badge">-{{ per.discount }}%</span>
-              </button>
-            </div>
-          </div>
-        </div>
 
-        <!-- ПРАВАЯ КОЛОНКА -->
-        <div class="right-column">
-          <div class="summary-wrapper">
-            <div class="glass-card summary-card">
+            <div class="explorer-container custom-scrollbar">
+              <TransitionGroup name="list">
+                <FileExplorer 
+                  v-for="key in Object.keys(filteredTree).sort((a,b) => {
+                      const nodeA = filteredTree[a];
+                      const nodeB = filteredTree[b];
+                      if (nodeA.isPriority && !nodeB.isPriority) return -1;
+                      if (!nodeA.isPriority && nodeB.isPriority) return 1;
+                      return a.localeCompare(b);
+                  })" 
+                  :key="key" 
+                  :node="filteredTree[key]" 
+                  :selectedId="selectedEgg?.attributes?.id || null"
+                  @select="onSelect" 
+                />
+              </TransitionGroup>
               
-              <div class="glow-effect"></div>
-              <div class="flag-position"><img :src="imgFlagDE" class="flag-img" /></div>
+              <div v-if="Object.keys(filteredTree).length === 0" class="empty-msg">
+                Ничего не найдено
+              </div>
+            </div>
+          </div>
 
-              <div class="summary-content">
-                <div class="summary-header">
-                  <IconBox class="product-icon" />
-                  <h3>{{ product.name }}</h3>
-                </div>
-
-                <div class="price-block">
-                  <p class="price-value">
-                    {{ formatPrice(totalPrice) }}
-                    <span class="price-period">/ мес.</span>
-                  </p>
-                </div>
-
-                <div class="specs-list">
-                  <div class="spec-item">
-                    <div class="spec-icon-box"><IconCpu class="spec-icon" /></div>
-                    <div class="spec-details">
-                      <span class="spec-label">Процессор</span>
-                      <span class="spec-value">{{ product.specs?.find((s:any) => s.key === 'CPU')?.value || '1 vCore' }}</span>
-                    </div>
-                  </div>
-                  <div class="spec-item">
-                    <div class="spec-icon-box"><IconRam class="spec-icon" /></div>
-                    <div class="spec-details">
-                      <span class="spec-label">Оперативная память</span>
-                      <span class="spec-value">{{ product.specs?.find((s:any) => s.key === 'RAM')?.value || '2 GB' }}</span>
-                    </div>
-                  </div>
-                  <div class="spec-item">
-                    <div class="spec-icon-box"><IconDisk class="spec-icon" /></div>
-                    <div class="spec-details">
-                      <span class="spec-label">Память</span>
-                      <span class="spec-value">{{ product.specs?.find((s:any) => s.key === 'Disk')?.value || '20 GB NVMe' }}</span>
-                    </div>
-                  </div>
-                  <div class="spec-item">
-                    <div class="spec-icon-box"><IconShield class="spec-icon" /></div>
-                    <div class="spec-details">
-                      <span class="spec-label">Защита от DDoS</span>
-                      <span class="spec-value">Начальная</span>
-                    </div>
-                  </div>
-                </div>
-
-                <button @click="handleCheckout" :disabled="isSubmitting" class="checkout-btn">
-                  <span v-if="!isSubmitting">Перейти к покупке</span>
-                  <span v-else>Обработка...</span>
+          <div class="section-block">
+            <h2 class="block-title">3. Срок аренды</h2>
+            
+            <div class="periods-locked-wrapper">
+              <div class="periods-grid disabled-state">
+                <button 
+                  v-for="per in periods" :key="per.months"
+                  class="period-card" :class="{ active: selectedPeriod === per.months }"
+                >
+                  <div class="ambient-glow blue"></div>
+                  <span class="period-val">{{ per.label }}</span>
+                  <span v-if="per.discount" class="discount-tag">-{{ per.discount }}%</span>
                 </button>
               </div>
+
+              <div class="locked-overlay">
+                <div class="status-badge">
+                  🚧 В будущем
+                </div>
+              </div>
             </div>
           </div>
+
         </div>
 
+        <div class="right-column">
+          <div class="summary-card sticky top-5">
+            <div class="ambient-glow purple"></div>
+            
+            <div class="summary-header">
+              <img :src="imgFlagDE" class="flag-icon" />
+              <div class="prod-info">
+                <h3 class="prod-name">{{ product?.name }}</h3>
+                <span class="prod-cat">Falkenstein, DE</span>
+              </div>
+            </div>
+
+            <div class="price-section">
+              <div class="price-val">{{ formatPrice(totalPrice) }}</div>
+              <div class="price-sub">за {{ selectedPeriod }} мес.</div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="specs-list">
+               <div class="spec-row">
+                 <span class="label">CPU</span>
+                 <span class="val">{{ product?.cpu_limit }}%</span>
+               </div>
+               <div class="spec-row">
+                 <span class="label">RAM</span>
+                 <span class="val">{{ product?.memory_mb }} MB</span>
+               </div>
+               <div class="spec-row">
+                 <span class="label">NVMe Disk</span>
+                 <span class="val">{{ product?.disk_mb }} MB</span>
+               </div>
+               
+               <div class="selected-core-box" :class="{ 'has-core': selectedEgg }">
+                 <div class="sc-label">Ядро</div>
+                 <div class="sc-val">{{ selectedEgg ? selectedEgg.attributes.name : 'Не выбрано' }}</div>
+               </div>
+            </div>
+
+            <button @click="handleCheckout" :disabled="isSubmitting" class="checkout-btn">
+              {{ isSubmitting ? 'Создание...' : 'Оплатить и создать' }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.container-custom { width: 100%; max-width: 1350px; margin: 0; padding-bottom: 100px; color: #f5f5f5; }
+/* Layout */
+.checkout-page { width: 100%; max-width: 1200px; padding-bottom: 80px; padding-left: 20px; padding-right: 20px; color: #eee; font-family: 'Inter', sans-serif; }
+.header-row { margin-bottom: 30px; }
+.back-link { background: none; border: none; color: #666; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: 0.2s; padding: 0; font-size: 14px; margin-bottom: 10px; }
+.back-link:hover { color: #fff; }
+.icon-arrow { width: 16px; transform: rotate(180deg); }
+.page-title { color: #fff; font-size: 32px; font-weight: 700; margin: 0; }
+.subtitle { color: #666; font-size: 14px; margin-top: 5px; }
 
-.header-section { margin-bottom: 3rem; }
-.back-link { background: none; border: none; color: #737373; font-size: 15px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; transition: color 0.2s; }
-.back-link:hover { color: white; }
-.icon-arrow { width: 18px; height: 18px; transform: rotate(180deg); }
-.page-title { font-size: 32px; font-weight: 800; color: white; margin: 0 0 6px 0; line-height: 1.1; }
-.page-subtitle { color: #888; font-size: 15px; margin: 0; }
+.checkout-grid { display: grid; grid-template-columns: 1fr; gap: 40px; }
+@media(min-width: 1024px) { .checkout-grid { grid-template-columns: 1.8fr 1fr; } }
 
-.checkout-grid { display: grid; grid-template-columns: 1fr; gap: 2.5rem; }
-@media (min-width: 1024px) { .checkout-grid { grid-template-columns: 1.8fr 1fr; gap: 60px; } }
+.section-block { margin-bottom: 40px; }
+.block-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
+.block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 
-.glass-card { background: rgba(23, 23, 23, 0.5); border: 1px solid #262626; border-radius: 16px; padding: 32px; margin-bottom: 30px; transition: border-color 0.3s ease; }
-.glass-card:hover { border-color: #404040; }
+/* Inputs */
+.modern-input { width: 100%; padding: 14px 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; color: #fff; font-size: 15px; transition: 0.2s; box-sizing: border-box; }
+.modern-input:focus { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.04); outline: none; }
 
-.card-header { margin-bottom: 20px; }
-.icon-label { display: flex; align-items: center; gap: 10px; }
-.icon-svg { width: 24px; height: 24px; color: #a3a3a3; }
-.icon-label h2 { font-size: 20px; font-weight: 700; color: white; margin: 0; }
+.search-box { position: relative; width: 250px; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; color: #666; }
+.search-input { width: 100%; padding: 10px 10px 10px 38px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; color: #fff; font-size: 13px; transition: 0.2s; box-sizing: border-box; }
+.search-input:focus { border-color: rgba(255, 255, 255, 0.2); outline: none; }
 
-.custom-input { width: 100%; background: rgba(38, 38, 38, 0.5); border: 1px solid #404040; border-radius: 12px; padding: 16px 20px; color: white; font-size: 16px; outline: none; transition: all 0.2s; box-sizing: border-box; }
-.custom-input:focus { border-color: #737373; background: rgba(38, 38, 38, 0.8); }
+.explorer-container { 
+  max-height: 500px; overflow-y: auto; 
+  padding: 4px; margin: -4px; 
+}
+.empty-msg { text-align: center; color: #555; padding: 40px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; }
 
-.cores-grid { display: grid; grid-template-columns: 1fr; gap: 16px; max-height: 420px; overflow-y: auto; padding-right: 6px; }
-@media (min-width: 640px) { .cores-grid { grid-template-columns: 1fr 1fr; } }
-.core-card { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-radius: 12px; border: 1px solid #404040; background: rgba(38, 38, 38, 0.3); cursor: pointer; transition: all 0.2s; }
-.core-card:hover { background: rgba(38, 38, 38, 0.6); border-color: #525252; }
-.core-card.active { background: #262626; border-color: #737373; box-shadow: 0 0 20px rgba(255, 255, 255, 0.03); }
-.core-info { display: flex; align-items: center; gap: 16px; }
-.core-icon-box { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(64, 64, 64, 0.3); color: #d4d4d4; transition: background 0.2s; }
-.core-icon-box.active { background: rgba(255, 255, 255, 0.1); color: white; }
-.core-svg { width: 28px; height: 28px; }
-.core-text { display: flex; flex-direction: column; gap: 2px; }
-.core-name { font-size: 16px; font-weight: 600; color: white; line-height: 1.2; }
-.core-version { font-size: 13px; color: #a3a3a3; }
-.radio-circle { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #525252; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-.core-card:hover .radio-circle { border-color: #737373; }
-.radio-circle.active { border-color: white; background: white; }
-.radio-dot { width: 10px; height: 10px; background: black; border-radius: 50%; }
+/* Period (Locked) */
+.periods-locked-wrapper { position: relative; border-radius: 16px; overflow: hidden; }
+.periods-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 
-.periods-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-@media (min-width: 640px) { .periods-grid { grid-template-columns: repeat(4, 1fr); } }
-.period-btn { position: relative; padding: 16px; border-radius: 12px; border: 1px solid #404040; background: rgba(38, 38, 38, 0.3); color: #a3a3a3; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.2s; }
-.period-btn:hover { border-color: #525252; color: #d4d4d4; }
-.period-btn.active { background: #262626; border-color: #737373; color: white; }
-.period-label { font-size: 15px; font-weight: 600; }
-.discount-badge { position: absolute; top: -10px; right: -10px; font-size: 11px; font-weight: 700; background: white; color: black; padding: 3px 8px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+.disabled-state {
+  opacity: 0.4; filter: grayscale(0.8); pointer-events: none;
+}
 
-.summary-wrapper { position: sticky; top: 20px; }
-.summary-card { position: relative; overflow: hidden; backdrop-filter: blur(10px); padding: 40px; }
-.glow-effect { position: absolute; top: -50px; right: -50px; width: 250px; height: 250px; background: radial-gradient(circle, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15), rgba(236, 72, 153, 0.15)); border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; }
-.flag-position { position: absolute; top: 32px; right: 32px; z-index: 20; }
-.flag-img { width: 60px; height: auto; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
-.summary-content { position: relative; z-index: 10; }
-.summary-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-right: 70px; }
-.product-icon { width: 36px; height: 36px; color: white; }
-.summary-header h3 { font-size: 24px; font-weight: 700; color: white; margin: 0; line-height: 1.1; }
-.price-value { font-size: 40px; font-weight: 700; color: white; margin: 0 0 32px 0; letter-spacing: -0.03em; }
-.price-period { font-size: 18px; font-weight: 400; color: #888; letter-spacing: 0; }
-.specs-list { display: flex; flex-direction: column; gap: 20px; margin-bottom: 40px; }
-.spec-item { display: flex; align-items: center; gap: 16px; }
-.spec-icon-box { width: 28px; display: flex; justify-content: center; }
-.spec-icon { width: 24px; height: 24px; color: #525252; flex-shrink: 0; }
-.spec-details { flex-grow: 1; display: flex; flex-direction: column; }
-.spec-label { font-size: 13px; color: #737373; margin-bottom: 2px; line-height: 1; }
-.spec-value { font-size: 16px; font-weight: 500; color: white; line-height: 1.2; }
-.checkout-btn { width: 100%; background: transparent; border: 2px solid white; color: white; font-weight: 600; padding: 18px; border-radius: 10px; font-size: 18px; cursor: pointer; transition: all 0.3s ease; }
-.checkout-btn:hover:not(:disabled) { background: white; color: black; }
+.period-card { position: relative; padding: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.2s; }
+.period-card.active { border-color: #3b82f6; background: rgba(59, 130, 246, 0.05); }
+.period-val { font-weight: 500; font-size: 14px; color: #ddd; z-index: 2; }
+.period-card.active .period-val { color: #fff; }
+.discount-tag { position: absolute; top: 5px; right: 5px; background: #22c55e; color: #000; font-size: 10px; padding: 2px 6px; border-radius: 100px; font-weight: 700; z-index: 2; }
+
+/* Locked Overlay */
+.locked-overlay {
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.2); backdrop-filter: blur(2px);
+}
+.status-badge {
+  background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 16px; border-radius: 50px; font-weight: 600; font-size: 13px; color: #fff;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+/* Glows */
+.ambient-glow { position: absolute; left: 0; top: 0; bottom: 0; width: 80px; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+.ambient-glow.blue { background: radial-gradient(circle at left center, #3b82f6, transparent 70%); }
+.ambient-glow.purple { background: radial-gradient(circle at top left, #a855f7, transparent 70%); width: 200px; height: 200px; }
+.period-card:hover .ambient-glow { opacity: 0.15; }
+.period-card.active .ambient-glow { opacity: 0.25; }
+.summary-card .ambient-glow { opacity: 0.15; }
+
+/* Summary */
+.summary-card { position: relative; background: rgba(20, 20, 20, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 30px; overflow: hidden; }
+.summary-header { display: flex; gap: 15px; align-items: center; margin-bottom: 25px; position: relative; z-index: 2; }
+.flag-icon { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; }
+.prod-name { font-size: 20px; font-weight: 700; margin: 0 0 4px 0; color: #fff; }
+.prod-cat { font-size: 12px; color: #888; }
+.price-section { margin-bottom: 25px; position: relative; z-index: 2; }
+.price-val { font-size: 36px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
+.price-sub { color: #666; font-size: 14px; }
+.divider { height: 1px; background: rgba(255,255,255,0.05); margin-bottom: 25px; }
+.spec-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; position: relative; z-index: 2; }
+.label { color: #666; }
+.val { color: #ddd; font-weight: 500; font-family: monospace; }
+.selected-core-box { margin-top: 20px; padding: 16px; background: rgba(255, 255, 255, 0.03); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); position: relative; z-index: 2; }
+.selected-core-box.has-core { border-color: rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.05); }
+.sc-label { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+.sc-val { color: #fff; font-weight: 600; font-size: 14px; }
+.checkout-btn { width: 100%; padding: 16px; margin-top: 30px; background: #fff; color: #000; font-weight: 700; border-radius: 14px; border: none; cursor: pointer; transition: 0.2s; font-size: 15px; position: relative; z-index: 2; }
+.checkout-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(255,255,255,0.1); }
 .checkout-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .loading-wrapper { height: 60vh; display: flex; align-items: center; justify-content: center; }
-.spinner { width: 50px; height: 50px; border: 3px solid #525252; border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; }
+.spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.custom-scrollbar::-webkit-scrollbar { width: 5px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: rgba(64, 64, 64, 0.2); border-radius: 3px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(115, 115, 115, 0.4); border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.list-move, .list-enter-active, .list-leave-active { transition: all 0.4s ease; }
+.list-leave-to { opacity: 0; transform: translateX(20px); }
+.list-enter-from { opacity: 0; transform: translateX(-20px); }
+.list-leave-active { position: absolute; width: 100%; z-index: -1; }
 </style>

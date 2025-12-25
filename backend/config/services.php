@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // 👇 ВОТ ЭТОГО НЕ ХВАТАЛО 👇
+    'pterodactyl' => [
+        'url' => env('PTERODACTYL_URL'),
+        'key' => env('PTERODACTYL_API_KEY'),
+    ],
+
 ];

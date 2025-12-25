@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue' // Убрал лишние импорты для 3D
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { $api } from '~/composables/useApi'
+import { $api, useApiFetch } from '~/composables/useApi'
+import { useAuthStore } from '~/stores/auth' 
 import ModalConfirm from '~/components/ModalConfirm.vue'
 
 // Иконки
@@ -14,22 +15,23 @@ import IconExternal from '~/assets/icons/gamepad.svg?component'
 
 definePageMeta({ layout: 'dashboard' })
 
-// --- ТИПИЗАЦИЯ ---
 interface Service {
   id: number
   identifier: string
   name: string
   status: 'active' | 'stopped' | 'suspended'
-  core: number
+  core: string
   price_monthly: string | number
   created_at: string
   expires_at: string
   auto_renew: boolean
   product?: { name: string }
+  ip_address?: string
 }
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore() 
 const service = ref<Service | null>(null)
 const isLoading = ref(true)
 const showPassword = ref(false)
@@ -38,17 +40,22 @@ const isDeleting = ref(false)
 const isRenewLoading = ref(false)
 const copiedField = ref<string | null>(null)
 
-// --- УДАЛИЛ ЛОГИКУ 3D КАРТОЧКИ (она больше не нужна) ---
+// Панель URL (из конфига или хардкод)
+const PANEL_URL = 'https://panel.sakuranet.space'
 
-// --- API ACTIONS ---
 const fetchService = async () => {
   if (!route.params.id) return router.push('/dashboard/services')
   isLoading.value = true
   try {
     const response = await $api<any>(`/api/services/${route.params.id}`)
     service.value = response
+    // Если поле auto_renew не пришло, ставим false
     if (service.value && service.value.auto_renew === undefined) service.value.auto_renew = false 
-  } catch (e) { console.error(e) } finally { isLoading.value = false }
+  } catch (e) { 
+    console.error(e) 
+  } finally { 
+    isLoading.value = false 
+  }
 }
 
 const toggleAutoRenew = async () => {
@@ -60,6 +67,7 @@ const toggleAutoRenew = async () => {
     await $api(`/api/services/${service.value.id}/toggle-renew`, { method: 'POST', body: { auto_renew: !oldState } })
   } catch (e) {
     service.value.auto_renew = oldState
+    alert('Ошибка обновления автопродления')
   } finally { isRenewLoading.value = false }
 }
 
@@ -69,7 +77,10 @@ const confirmDelete = async () => {
   try {
     if(service.value) await $api(`/api/services/${service.value.id}`, { method: 'DELETE' })
     router.push('/dashboard/services')
-  } catch (e) { isDeleteModalOpen.value = false } finally { isDeleting.value = false }
+  } catch (e) { 
+    isDeleteModalOpen.value = false 
+    alert('Не удалось удалить услугу')
+  } finally { isDeleting.value = false }
 }
 
 const copyToClipboard = (text: string, field: string) => { 
@@ -83,9 +94,24 @@ const formatDateFull = (dateStr?: string) => {
   if (!dateStr) return '...'
   return new Date(dateStr).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
-const goToPanel = () => { window.open('https://panel.sakuranet.space', '_blank') }
+const goToPanel = () => { window.open(PANEL_URL, '_blank') }
 
-onMounted(() => { fetchService() })
+// 🔥 ОБНОВЛЕННАЯ ЛОГИКА ЗАГРУЗКИ
+onMounted(async () => {
+  // 1. Грузим данные о сервисе
+  await fetchService()
+  
+  // 2. 🔥 ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ЮЗЕРА, ЧТОБЫ ПОДТЯНУТЬ ПАРОЛЬ ОТ ПАНЕЛИ
+  // Это нужно, если пароль был сгенерирован при покупке, но стейт авторизации старый
+  try {
+    const { data } = await useApiFetch<any>('/api/user')
+    if (data.value) {
+      auth.user = data.value // Обновляем данные в сторе (Pinia)
+    }
+  } catch (e) {
+    console.error('Ошибка обновления профиля:', e)
+  }
+})
 </script>
 
 <template>
@@ -103,30 +129,28 @@ onMounted(() => { fetchService() })
     <transition name="fade" mode="out-in">
       
       <div v-if="isLoading" class="loading-state" key="loading">
-        <div class="loader-ring">
-          <div></div><div></div><div></div><div></div>
-        </div>
-        <p class="blink-text">УСТАНОВКА СОЕДИНЕНИЯ...</p>
+        <div class="loader-ring"><div></div><div></div><div></div><div></div></div>
+        <p class="blink-text">ЗАГРУЗКА ДАННЫХ...</p>
       </div>
 
       <div v-else-if="service" class="content-wrapper" key="content">
         
         <div class="page-header slide-in-top">
           <button @click="router.push('/dashboard/services')" class="back-btn">
-            <IconArrow class="icon-back" /> <span>НАЗАД К СПИСКУ</span>
+            <IconArrow class="icon-back" /> <span>НАЗАД</span>
           </button>
           
           <div class="header-content">
             <div class="header-left">
               <h1 class="page-title">{{ service.name }}</h1>
               <div class="id-badge">
-                <span class="id-label">ID СЕРВЕРА:</span>
+                <span class="id-label">UUID:</span>
                 <span class="id-val">{{ service.identifier }}</span>
               </div>
             </div>
             
             <button class="cyber-action-btn" @click="goToPanel">
-              <span class="btn-text">ОТКРЫТЬ ТЕРМИНАЛ</span>
+              <span class="btn-text">ПЕРЕЙТИ В ПАНЕЛЬ</span>
               <IconExternal class="btn-icon" />
               <div class="btn-bg-glitch"></div>
             </button>
@@ -142,52 +166,47 @@ onMounted(() => { fetchService() })
               
               <div class="panel-content">
                 <div class="status-header">
-                  <span class="panel-label">ТЕКУЩЕЕ СОСТОЯНИЕ</span>
+                  <span class="panel-label">СТАТУС</span>
                   <div class="live-indicator" :class="service.status">
-                    <span class="dot"></span>
-                    <span class="ping-ring"></span>
+                    <span class="dot"></span><span class="ping-ring"></span>
                   </div>
                 </div>
 
                 <div class="status-main-text" :class="service.status">
-                  {{ service.status === 'active' ? 'ONLINE' : 'OFFLINE' }}
+                  {{ service.status === 'active' ? 'ONLINE' : 'SUSPENDED' }}
                 </div>
 
                 <div class="status-footer">
                    <div class="footer-item">
-                     <span class="f-label">АПТАЙМ</span>
-                     <span class="f-val">99.9%</span>
+                     <span class="f-label">IP АДРЕС</span>
+                     <span class="f-val">{{ service.ip_address || 'Загрузка...' }}</span>
                    </div>
                    <div class="vertical-line"></div>
                    <div class="footer-item">
                      <span class="f-label">РЕГИОН</span>
-                     <span class="f-val">MSK-1</span>
-                   </div>
-                   <div class="vertical-line"></div>
-                   <div class="footer-item">
-                     <span class="f-label">СИСТЕМА</span>
-                     <span class="f-val ok" v-if="service.status === 'active'">НОРМА</span>
-                     <span class="f-val err" v-else>СТОП</span>
+                     <span class="f-val">Europe (DE)</span>
                    </div>
                 </div>
               </div>
             </div>
-            <div class="glass-panel hud-panel stagger-2">
-              <div class="hud-corner top-left"></div>
-              <div class="hud-corner top-right"></div>
-              <div class="hud-corner bottom-left"></div>
-              <div class="hud-corner bottom-right"></div>
 
-              <h2 class="panel-title">Протокол доступа (SFTP)</h2>
+            <div class="glass-panel hud-panel stagger-2">
+              <div class="hud-corner top-left"></div><div class="hud-corner top-right"></div>
+              <div class="hud-corner bottom-left"></div><div class="hud-corner bottom-right"></div>
+
+              <h2 class="panel-title">Данные для входа в Панель</h2>
+              <div class="panel-desc mb-4 text-xs text-gray-500">
+                Используйте эти данные для входа на {{ PANEL_URL }}
+              </div>
               
               <div class="fields-grid">
                 <div class="form-group">
-                  <label>ПОЛЬЗОВАТЕЛЬ</label>
+                  <label>ЛОГИН (EMAIL)</label>
                   <div class="input-wrapper">
-                    <input readonly :value="`user_${service.id}`" class="glass-input mono" />
-                    <button class="copy-btn" @click="copyToClipboard(`user_${service.id}`, 'user')">
-                      <svg v-if="copiedField === 'user'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon-success"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <input readonly :value="auth.user?.email" class="glass-input mono" />
+                    <button class="copy-btn" @click="copyToClipboard(auth.user?.email || '', 'login')">
+                      <svg v-if="copiedField === 'login'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="icon-success"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     </button>
                   </div>
                 </div>
@@ -195,9 +214,20 @@ onMounted(() => { fetchService() })
                 <div class="form-group">
                   <label>ПАРОЛЬ</label>
                   <div class="input-wrapper">
-                    <input readonly :type="showPassword ? 'text' : 'password'" value="*******" class="glass-input mono" />
+                    <input 
+                      readonly 
+                      :type="showPassword ? 'text' : 'password'" 
+                      :value="auth.user?.ptero_password || 'Пароль на почте / Старый'" 
+                      class="glass-input mono" 
+                    />
+                    
                     <button class="copy-btn text-btn" @click="showPassword = !showPassword">
                       {{ showPassword ? 'СКРЫТЬ' : 'ПОКАЗАТЬ' }}
+                    </button>
+                    
+                    <button v-if="auth.user?.ptero_password" class="copy-btn" @click="copyToClipboard(auth.user?.ptero_password || '', 'pass')">
+                        <svg v-if="copiedField === 'pass'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="icon-success"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     </button>
                   </div>
                 </div>
@@ -205,80 +235,46 @@ onMounted(() => { fetchService() })
             </div>
 
             <div class="glass-panel mt-6 stagger-3">
-               <h2 class="panel-title">Выделенные ресурсы</h2>
+               <h2 class="panel-title">Ресурсы</h2>
                <div class="specs-grid">
                   <div class="spec-item">
                     <IconCpu class="spec-icon" />
-                    <div class="spec-info">
-                      <span class="s-label">ЯДРА (vCPU)</span>
-                      <span class="s-val">{{ service.core }}</span>
-                    </div>
+                    <div class="spec-info"><span class="s-label">ТАРИФ</span><span class="s-val">{{ service.product?.name }}</span></div>
                   </div>
                   <div class="spec-item">
                     <IconRam class="spec-icon" />
-                    <div class="spec-info">
-                      <span class="s-label">ТАРИФ</span>
-                      <span class="s-val">{{ service.product?.name || 'CUSTOM' }}</span>
-                    </div>
+                    <div class="spec-info"><span class="s-label">ЯДРО</span><span class="s-val">{{ service.core }}</span></div>
                   </div>
                   <div class="spec-item">
                     <IconDisk class="spec-icon" />
-                    <div class="spec-info">
-                      <span class="s-label">ЦЕНА В МЕСЯЦ</span>
-                      <span class="s-val">{{ Number(service.price_monthly).toFixed(0) }} ₽</span>
-                    </div>
+                    <div class="spec-info"><span class="s-label">ЦЕНА</span><span class="s-val">{{ Number(service.price_monthly).toFixed(0) }} ₽</span></div>
                   </div>
                </div>
             </div>
-
           </div>
 
           <div class="right-col">
-            
             <div class="glass-panel billing-panel stagger-4">
               <div class="glow-blue-bottom"></div>
               <h2 class="panel-title">Биллинг</h2>
-              
               <div class="billing-info">
-                <div class="b-row">
-                  <span>СОЗДАН</span>
-                  <span class="mono">{{ formatDateFull(service.created_at) }}</span>
-                </div>
-                <div class="b-row highlight">
-                  <span>ИСТЕКАЕТ</span>
-                  <span class="mono text-white">{{ formatDateFull(service.expires_at) }}</span>
-                </div>
+                <div class="b-row"><span>СОЗДАН</span><span class="mono">{{ formatDateFull(service.created_at) }}</span></div>
+                <div class="b-row highlight"><span>ИСТЕКАЕТ</span><span class="mono text-white">{{ formatDateFull(service.expires_at) }}</span></div>
               </div>
-
               <div class="divider"></div>
-
               <div class="auto-renew-row" @click="toggleAutoRenew">
-                <div class="ar-info">
-                  <span class="ar-title">Автопродление</span>
-                  <span class="ar-desc">Автоматическое списание средств</span>
-                </div>
-                <div class="cyber-toggle" :class="{ active: service.auto_renew }">
-                  <div class="toggle-track"></div>
-                  <div class="toggle-thumb"></div>
-                </div>
+                <div class="ar-info"><span class="ar-title">Автопродление</span><span class="ar-desc">Списание с баланса</span></div>
+                <div class="cyber-toggle" :class="{ active: service.auto_renew }"><div class="toggle-track"></div><div class="toggle-thumb"></div></div>
               </div>
-
-              <button class="cosmic-btn w-full mt-6">
-                <span class="relative z-10">ПРОДЛИТЬ ВРУЧНУЮ</span>
-                <div class="btn-glow"></div>
-              </button>
+              <button class="cosmic-btn w-full mt-6"><span class="relative z-10">ПРОДЛИТЬ</span><div class="btn-glow"></div></button>
             </div>
 
             <div class="danger-panel mt-6 stagger-5">
               <div class="hazard-stripes"></div>
               <h3 class="danger-title">ОПАСНАЯ ЗОНА</h3>
-              <p class="danger-desc">Удаление сервиса приведет к безвозвратной потере всех данных.</p>
-              
-              <button class="danger-btn" @click="requestDelete">
-                <IconTrash class="d-icon" /> УДАЛИТЬ СЕРВИС
-              </button>
+              <p class="danger-desc">Удаление сервиса приведет к потере данных.</p>
+              <button class="danger-btn" @click="requestDelete"><IconTrash class="d-icon" /> УДАЛИТЬ</button>
             </div>
-
           </div>
         </div>
       </div>
@@ -287,197 +283,37 @@ onMounted(() => { fetchService() })
 </template>
 
 <style scoped>
-/* --- СТИЛИ ДЛЯ НОВОЙ СТАТУС-КАРТОЧКИ --- */
-.server-status-panel {
-  position: relative;
-  width: 100%;
-  border-radius: 12px;
-  background: rgba(15, 15, 20, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-  margin-bottom: 30px;
-  backdrop-filter: blur(10px);
-}
-
-.status-glow-bg {
-  position: absolute;
-  top: -50px;
-  right: -50px;
-  width: 200px;
-  height: 200px;
-  filter: blur(80px);
-  opacity: 0.25;
-  transition: 0.5s;
-  border-radius: 50%;
-}
-.status-glow-bg.active { background: #22c55e; }
-.status-glow-bg.stopped { background: #ef4444; }
-
-.panel-content {
-  position: relative;
-  z-index: 2;
-  padding: 24px 30px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.status-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.panel-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #555;
-}
-
-.live-indicator {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-}
-.live-indicator .dot {
-  width: 8px;
-  height: 8px;
-  background: #444;
-  border-radius: 50%;
-  z-index: 2;
-}
-.live-indicator .ping-ring {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  opacity: 0;
-  z-index: 1;
-}
-
-/* Анимация статуса */
-.live-indicator.active .dot { background: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.6); }
-.live-indicator.active .ping-ring {
-  background: #22c55e;
-  animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-.live-indicator.stopped .dot { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); }
-
-@keyframes ping {
-  75%, 100% { transform: scale(2.5); opacity: 0; }
-}
-
-.status-main-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 36px;
-  font-weight: 800;
-  letter-spacing: -1px;
-  color: #333;
-  transition: 0.3s;
-}
-.status-main-text.active {
-  color: #fff;
-  text-shadow: 0 0 30px rgba(34, 197, 94, 0.3);
-}
-.status-main-text.stopped {
-  color: #ef4444;
-  text-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
-}
-
-.status-footer {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255,255,255,0.05);
-}
-
-.footer-item { display: flex; flex-direction: column; gap: 2px; }
-.f-label { font-size: 10px; color: #555; font-weight: 600; letter-spacing: 0.5px; }
-.f-val { font-size: 13px; color: #bbb; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
-.f-val.ok { color: #22c55e; }
-.f-val.err { color: #ef4444; }
-
-.vertical-line {
-  width: 1px;
-  height: 20px;
-  background: rgba(255,255,255,0.05);
-}
-
-/* --- ОСТАЛЬНЫЕ СТИЛИ (ТВОИ СТАРЫЕ) --- */
-.cyber-page { 
-  position: relative; 
-  width: 100%; 
-  max-width: 1350px; 
-  margin: 0; 
-  padding-bottom: 100px; 
-  font-family: 'Inter', sans-serif; 
-}
-
+/* Твои стили - оставляю без изменений для экономии места, так как они были в вопросе */
+.cyber-page { position: relative; width: 100%; max-width: 1350px; margin: 0; padding-bottom: 100px; font-family: 'Inter', sans-serif; }
 .content-wrapper { position: relative; z-index: 10; padding: 0 0; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 .mt-6 { margin-top: 24px; }
 .w-full { width: 100%; }
-
-/* Grid */
 .grid-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
 @media(min-width: 1024px) { .grid-layout { grid-template-columns: 1.3fr 0.7fr; gap: 40px; } }
-
-/* FADE TRANSITION */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-
-/* Animations */
-@keyframes slideUpFade {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+@keyframes slideUpFade { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 .slide-in-top { animation: slideUpFade 0.6s ease-out forwards; }
 .stagger-1 { animation: slideUpFade 0.6s ease-out 0.1s forwards; opacity: 0; }
 .stagger-2 { animation: slideUpFade 0.6s ease-out 0.2s forwards; opacity: 0; }
 .stagger-3 { animation: slideUpFade 0.6s ease-out 0.3s forwards; opacity: 0; }
 .stagger-4 { animation: slideUpFade 0.6s ease-out 0.4s forwards; opacity: 0; }
 .stagger-5 { animation: slideUpFade 0.6s ease-out 0.5s forwards; opacity: 0; }
-
-/* HEADER */
 .page-header { margin-bottom: 40px; }
-.back-btn { 
-  background: none; border: none; color: #666; display: flex; align-items: center; gap: 8px; 
-  font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: 1.5px; transition: 0.3s; margin-bottom: 20px; 
-}
+.back-btn { background: none; border: none; color: #666; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: 1.5px; transition: 0.3s; margin-bottom: 20px; }
 .back-btn:hover { color: #a855f7; gap: 12px; }
 .icon-back { width: 12px; transform: rotate(180deg); }
-
 .header-content { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
-
-.id-badge { 
-  display: flex; align-items: center; gap: 8px; 
-  font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-top: 8px; 
-}
+.id-badge { display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-top: 8px; }
 .id-label { color: #555; }
 .id-val { color: #888; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; }
-
-.page-title { 
-  font-size: 42px; font-weight: 900; color: white; margin: 0; letter-spacing: -1px; text-transform: uppercase; line-height: 1;
-}
-
-.cyber-action-btn {
-  background: rgba(0,0,0,0.6); border: 1px solid #a855f7; color: #a855f7;
-  border-radius: 4px; padding: 0 28px; height: 48px; display: flex; align-items: center; gap: 10px;
-  cursor: pointer; position: relative; overflow: hidden; transition: all 0.3s ease;
-}
+.page-title { font-size: 42px; font-weight: 900; color: white; margin: 0; letter-spacing: -1px; text-transform: uppercase; line-height: 1; }
+.cyber-action-btn { background: rgba(0,0,0,0.6); border: 1px solid #a855f7; color: #a855f7; border-radius: 4px; padding: 0 28px; height: 48px; display: flex; align-items: center; gap: 10px; cursor: pointer; position: relative; overflow: hidden; transition: all 0.3s ease; }
 .cyber-action-btn:hover { background: #a855f7; color: white; box-shadow: 0 0 30px rgba(168, 85, 247, 0.4); }
 .btn-text { font-weight: 800; font-size: 12px; letter-spacing: 1px; z-index: 2; }
 .btn-icon { width: 16px; height: 16px; z-index: 2; }
-
-/* PANELS */
-.glass-panel {
-  background: rgba(10, 10, 10, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(16px); padding: 25px; border-radius: 1px; position: relative;
-}
+.glass-panel { background: rgba(10, 10, 10, 0.6); border: 1px solid rgba(255, 255, 255, 0.06); backdrop-filter: blur(16px); padding: 25px; border-radius: 1px; position: relative; }
 .hud-panel { border: 1px solid rgba(255,255,255,0.03); border-radius: 0; }
 .hud-corner { position: absolute; width: 10px; height: 10px; border-color: rgba(255,255,255,0.2); border-style: solid; transition: 0.3s; }
 .top-left { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
@@ -485,11 +321,8 @@ onMounted(() => { fetchService() })
 .bottom-left { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
 .bottom-right { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
 .glass-panel:hover .hud-corner { border-color: #a855f7; width: 20px; height: 20px; }
-
 .panel-title { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 24px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
 .panel-title::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.05); }
-
-/* INPUTS */
 .fields-grid { display: flex; flex-direction: column; gap: 20px; }
 .form-group label { display: block; font-size: 10px; color: #888; margin-bottom: 8px; font-weight: 600; letter-spacing: 1px; }
 .input-wrapper { display: flex; gap: 0; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; overflow: hidden; transition: 0.3s; }
@@ -497,39 +330,30 @@ onMounted(() => { fetchService() })
 .glass-input { flex: 1; background: transparent; border: none; padding: 14px; color: #ddd; font-size: 13px; outline: none; }
 .copy-btn { background: rgba(255,255,255,0.03); border: none; border-left: 1px solid rgba(255,255,255,0.1); color: #777; cursor: pointer; padding: 0 16px; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
 .copy-btn:hover { background: rgba(255,255,255,0.1); color: white; }
-.text-btn { font-size: 10px; font-weight: 700; width: 60px; }
+.text-btn { font-size: 10px; font-weight: 700; width: 80px; }
 .icon-success { color: #22c55e; }
-
-/* SPECS */
 .specs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .spec-item { background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%); border: 1px solid rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; transition: 0.3s; }
 .spec-item:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-2px); }
 .spec-icon { width: 24px; height: 24px; color: #555; }
 .s-label { font-size: 9px; color: #666; letter-spacing: 1px; margin-top: 4px; display: block; }
 .s-val { font-size: 14px; color: white; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-
-/* BILLING */
 .billing-info { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
 .b-row { display: flex; justify-content: space-between; font-size: 12px; color: #777; letter-spacing: 0.5px; }
 .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); margin: 24px 0; }
-
 .auto-renew-row { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 10px; margin: -10px; border-radius: 8px; transition: 0.2s; }
 .auto-renew-row:hover { background: rgba(255,255,255,0.02); }
 .ar-title { display: block; font-size: 13px; font-weight: 600; color: #ddd; }
 .ar-desc { font-size: 11px; color: #555; }
-
 .cyber-toggle { width: 44px; height: 24px; position: relative; }
 .toggle-track { width: 100%; height: 100%; background: #222; border-radius: 20px; border: 1px solid #333; transition: 0.3s; }
 .toggle-thumb { width: 18px; height: 18px; background: #555; border-radius: 50%; position: absolute; top: 3px; left: 3px; transition: 0.3s cubic-bezier(0.5, 1.5, 0.5, 1); display: flex; align-items: center; justify-content: center; }
 .cyber-toggle.active .toggle-track { border-color: #a855f7; background: rgba(168, 85, 247, 0.1); }
 .cyber-toggle.active .toggle-thumb { transform: translateX(20px); background: #a855f7; box-shadow: 0 0 10px #a855f7; }
-
-/* BUTTONS */
 .cosmic-btn { position: relative; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); color: white; font-weight: 700; font-size: 12px; padding: 14px; border-radius: 6px; cursor: pointer; overflow: hidden; letter-spacing: 1px; transition: 0.3s; }
 .cosmic-btn:hover { border-color: #a855f7; background: rgba(168, 85, 247, 0.05); }
 .btn-glow { position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transform: skewX(-20deg); transition: 0.5s; }
 .cosmic-btn:hover .btn-glow { left: 150%; transition: 0.7s; }
-
 .danger-panel { background: rgba(20, 5, 5, 0.4); border: 1px solid rgba(239, 68, 68, 0.15); border-radius: 8px; padding: 20px; text-align: center; position: relative; overflow: hidden; }
 .hazard-stripes { position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: repeating-linear-gradient(45deg, #ef4444, #ef4444 10px, transparent 10px, transparent 20px); opacity: 0.6; }
 .danger-title { color: #ef4444; font-size: 12px; font-weight: 800; letter-spacing: 2px; margin-bottom: 6px; }
@@ -537,7 +361,6 @@ onMounted(() => { fetchService() })
 .danger-btn { background: transparent; border: 1px solid #ef4444; color: #ef4444; width: 100%; padding: 12px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
 .danger-btn:hover { background: #ef4444; color: white; box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
 .d-icon { width: 16px; height: 16px; min-width: 16px; flex-shrink: 0; margin-right: 8px; }
-
 .loading-state { height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
 .loader-ring { display: inline-block; position: relative; width: 64px; height: 64px; }
 .loader-ring div { box-sizing: border-box; display: block; position: absolute; width: 50px; height: 50px; margin: 8px; border: 3px solid #a855f7; border-radius: 50%; animation: lds-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite; border-color: #a855f7 transparent transparent transparent; }
@@ -547,4 +370,28 @@ onMounted(() => { fetchService() })
 @keyframes lds-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .blink-text { color: #555; font-family: monospace; letter-spacing: 2px; animation: blink 2s infinite; font-size: 12px; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.server-status-panel { position: relative; width: 100%; border-radius: 12px; background: rgba(15, 15, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden; margin-bottom: 30px; backdrop-filter: blur(10px); }
+.status-glow-bg { position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; filter: blur(80px); opacity: 0.25; transition: 0.5s; border-radius: 50%; }
+.status-glow-bg.active { background: #22c55e; }
+.status-glow-bg.stopped { background: #ef4444; }
+.panel-content { position: relative; z-index: 2; padding: 24px 30px; display: flex; flex-direction: column; gap: 16px; }
+.status-header { display: flex; justify-content: space-between; align-items: center; }
+.panel-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #555; }
+.live-indicator { position: relative; display: flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
+.live-indicator .dot { width: 8px; height: 8px; background: #444; border-radius: 50%; z-index: 2; }
+.live-indicator .ping-ring { position: absolute; width: 100%; height: 100%; border-radius: 50%; opacity: 0; z-index: 1; }
+.live-indicator.active .dot { background: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.6); }
+.live-indicator.active .ping-ring { background: #22c55e; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+.live-indicator.stopped .dot { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); }
+@keyframes ping { 75%, 100% { transform: scale(2.5); opacity: 0; } }
+.status-main-text { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 800; letter-spacing: -1px; color: #333; transition: 0.3s; }
+.status-main-text.active { color: #fff; text-shadow: 0 0 30px rgba(34, 197, 94, 0.3); }
+.status-main-text.stopped { color: #ef4444; text-shadow: 0 0 30px rgba(239, 68, 68, 0.3); }
+.status-footer { display: flex; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
+.footer-item { display: flex; flex-direction: column; gap: 2px; }
+.f-label { font-size: 10px; color: #555; font-weight: 600; letter-spacing: 0.5px; }
+.f-val { font-size: 13px; color: #bbb; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+.f-val.ok { color: #22c55e; }
+.f-val.err { color: #ef4444; }
+.vertical-line { width: 1px; height: 20px; background: rgba(255,255,255,0.05); }
 </style>

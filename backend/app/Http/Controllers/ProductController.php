@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Product; // <--- ОБЯЗАТЕЛЬНО
+use App\Models\Product;
 use Illuminate\Http\Request;
 
 class ProductController extends Controller
@@ -22,7 +22,18 @@ class ProductController extends Controller
             'country' => 'nullable|string',
             'game_type' => 'nullable|string',
             'price' => 'required|numeric',
-            'specs' => 'array' // 🔥 ПЕРЕИМЕНОВАЛИ
+            'specs' => 'array',
+            
+            // Настройки Pterodactyl
+            'ptero_nest_id' => 'nullable|integer',
+            'ptero_egg_id' => 'nullable|integer',
+            'ptero_docker_image' => 'nullable|string',
+            'ptero_startup' => 'nullable|string',
+            'memory_mb' => 'nullable|integer',
+            'disk_mb' => 'nullable|integer',
+            'cpu_limit' => 'nullable|integer',
+            'databases' => 'nullable|integer',
+            'backups' => 'nullable|integer',
         ]);
 
         return Product::create($validated);
@@ -39,7 +50,18 @@ class ProductController extends Controller
             'country' => 'nullable|string',
             'game_type' => 'nullable|string',
             'price' => 'required|numeric',
-            'specs' => 'array' // 🔥 ПЕРЕИМЕНОВАЛИ
+            'specs' => 'array',
+            
+            // Настройки Pterodactyl
+            'ptero_nest_id' => 'nullable|integer',
+            'ptero_egg_id' => 'nullable|integer',
+            'ptero_docker_image' => 'nullable|string',
+            'ptero_startup' => 'nullable|string',
+            'memory_mb' => 'nullable|integer',
+            'disk_mb' => 'nullable|integer',
+            'cpu_limit' => 'nullable|integer',
+            'databases' => 'nullable|integer',
+            'backups' => 'nullable|integer',
         ]);
 
         $product->update($validated);
