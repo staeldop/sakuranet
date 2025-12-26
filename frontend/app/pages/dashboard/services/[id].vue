@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { $api, useApiFetch } from '~/composables/useApi'
 import { useAuthStore } from '~/stores/auth' 
 import ModalConfirm from '~/components/ModalConfirm.vue'
+import FileExplorer from '~/components/FileExplorer.vue'
 
-// Иконки
+// ИМПОРТ ИКОНОК
 import IconArrow from '~/assets/icons/arrow-right.svg?component'
 import IconTrash from '~/assets/icons/trash.svg?component'
 import IconCpu from '~/assets/icons/cpu.svg?component'
 import IconRam from '~/assets/icons/ram.svg?component'
 import IconDisk from '~/assets/icons/disk.svg?component'
 import IconExternal from '~/assets/icons/gamepad.svg?component'
+import IconBox from '~/assets/icons/box.svg?component'
+import IconSearch from '~/assets/icons/search.svg?component'
+import IconCheck from '~/assets/icons/check.svg?component'
 
 definePageMeta({ layout: 'dashboard' })
 
@@ -19,7 +23,7 @@ interface Service {
   id: number
   identifier: string
   name: string
-  status: 'active' | 'stopped' | 'suspended'
+  status: 'active' | 'stopped' | 'suspended' | 'installing'
   core: string
   price_monthly: string | number
   created_at: string
@@ -40,15 +44,25 @@ const isDeleting = ref(false)
 const isRenewLoading = ref(false)
 const copiedField = ref<string | null>(null)
 
-// Панель URL (из конфига или хардкод)
+// --- СОСТОЯНИЕ ДЛЯ СМЕНЫ ЯДРА ---
+const isChangeCoreOpen = ref(false)
+const isCoreChanging = ref(false)
+const selectedNestId = ref<number | null>(null)
+const selectedEggId = ref<number | null>(null)
+const selectedEggName = ref<string>('')
+const searchQuery = ref('')
+const fileTree = ref<any>({})
+const IGNORED_PATH_WORDS = ['game_eggs', 'twitch', 'voice_servers', 'other', 'misc', 'software']
+
 const PANEL_URL = 'https://panel.sakuranet.space'
 
+// --- ЗАГРУЗКА ДАННЫХ СЕРВИСА ---
 const fetchService = async () => {
   if (!route.params.id) return router.push('/dashboard/services')
   isLoading.value = true
   try {
-    const response = await $api<any>(`/api/services/${route.params.id}`)
-    service.value = response
+    const { data } = await useApiFetch<any>(`/api/services/${route.params.id}`)
+    if (data.value) service.value = data.value
     // Если поле auto_renew не пришло, ставим false
     if (service.value && service.value.auto_renew === undefined) service.value.auto_renew = false 
   } catch (e) { 
@@ -58,6 +72,204 @@ const fetchService = async () => {
   }
 }
 
+// --- ЛОГИКА ДЕРЕВА ЯДЕР (С ПРИОРИТЕТАМИ) ---
+const buildTreeCorrected = (nestsData: any[]) => {
+  const root: any = {}
+  const prioritySet = new Set<string>()
+
+  // 1. Собираем приоритеты
+  nestsData.forEach(nest => {
+    if (!nest.attributes?.relationships?.eggs?.data) return;
+    nest.attributes.relationships.eggs.data.forEach((egg: any) => {
+      const desc = egg.attributes.description || ''
+      const priorityMatch = desc.match(/\[priority:\s*([^\]]+)\]/i)
+      if (priorityMatch) prioritySet.add(priorityMatch[1].trim().toLowerCase())
+    })
+  })
+
+  // 2. Строим дерево
+  nestsData.forEach(nest => {
+    const nestName = nest.attributes.name
+    const eggs = nest.attributes.relationships?.eggs?.data
+    
+    if (!eggs || eggs.length === 0) return
+
+    // Создаем корневую категорию
+    if (!root[nestName]) {
+      root[nestName] = {
+        name: nestName,
+        type: 'folder',
+        children: {},
+        containsSelected: false,
+        isPriority: prioritySet.has(nestName.toLowerCase())
+      }
+    }
+
+    eggs.forEach((egg: any) => {
+      egg._nestId = nest.attributes.id 
+
+      const desc = egg.attributes.description || ''
+      const pathMatch = desc.match(/\[PATH:\s*([^\]]+)\]/i)
+      
+      let pathParts: string[] = []
+
+      if (pathMatch) {
+        const rawParts = pathMatch[1].split('>').map((s: string) => s.trim())
+        pathParts = rawParts.filter(part => {
+          const p = part.toLowerCase()
+          return !IGNORED_PATH_WORDS.includes(p) && p !== nestName.toLowerCase()
+        })
+      }
+
+      if (pathParts.length > 0) {
+        const lastFolder = pathParts[pathParts.length - 1].toLowerCase()
+        const eggName = egg.attributes.name.toLowerCase()
+        if (eggName.includes(lastFolder) || lastFolder === eggName) {
+          pathParts.pop()
+        }
+      }
+
+      let currentLevel = root[nestName].children
+
+      pathParts.forEach(part => {
+        if (!currentLevel[part]) {
+          currentLevel[part] = { 
+            name: part, 
+            type: 'folder', 
+            children: {}, 
+            containsSelected: false, 
+            isPriority: prioritySet.has(part.toLowerCase()) 
+          }
+        }
+        else if (currentLevel[part].type === 'file') {
+             const existingFile = currentLevel[part];
+             currentLevel[part] = {
+                 name: part,
+                 type: 'folder',
+                 children: {},
+                 containsSelected: false,
+                 isPriority: existingFile.isPriority
+             };
+             currentLevel[part].children[existingFile.name] = existingFile;
+        }
+
+        currentLevel = currentLevel[part].children
+      })
+      
+      const eggName = egg.attributes.name;
+      
+      const fileNode = { 
+        name: eggName, 
+        type: 'file', 
+        data: egg,
+        isPriority: false 
+      }
+
+      if (currentLevel[eggName] && currentLevel[eggName].type === 'folder') {
+          currentLevel[eggName].children[eggName] = fileNode
+      } else {
+          currentLevel[eggName] = fileNode
+      }
+    })
+  })
+  return root
+}
+
+// --- ФИЛЬТРАЦИЯ И ПОИСК ---
+const filterNode = (node: any, query: string): any => {
+  if (node.type === 'file') {
+    return node.name.toLowerCase().includes(query) ? node : null
+  }
+  const filteredChildren: any = {}
+  let hasMatchingChildren = false
+  
+  if (node.children) {
+      Object.keys(node.children).forEach(key => {
+        const result = filterNode(node.children[key], query)
+        if (result) {
+          filteredChildren[key] = result
+          hasMatchingChildren = true
+        }
+      })
+  }
+  if (hasMatchingChildren) {
+    return { ...node, children: filteredChildren, containsSelected: true }
+  }
+  return null
+}
+
+const filteredTree = computed(() => {
+  if (!searchQuery.value) return fileTree.value
+  const query = searchQuery.value.toLowerCase()
+  const result: any = {}
+  Object.keys(fileTree.value).forEach(key => {
+    const filtered = filterNode(fileTree.value[key], query)
+    if (filtered) result[key] = filtered
+  })
+  return result
+})
+
+// --- ОБРАБОТЧИК ВЫБОРА (ИСПРАВЛЕННЫЙ) ---
+const onSelectEgg = (egg: any) => {
+  if (egg && egg.attributes) {
+      selectedNestId.value = egg._nestId
+      selectedEggId.value = egg.attributes.id
+      selectedEggName.value = egg.attributes.name
+  }
+}
+
+// --- ЗАГРУЗКА ЯДЕР ---
+const fetchNests = async () => {
+  try {
+    const { data } = await useApiFetch<any>('/api/eggs/tree')
+    let nestsArray = []
+    
+    if (data.value) {
+        if (Array.isArray(data.value)) {
+            nestsArray = data.value
+        } else if (Array.isArray(data.value.data)) {
+            nestsArray = data.value.data
+        }
+    }
+
+    if (nestsArray.length > 0) {
+      fileTree.value = buildTreeCorrected(nestsArray)
+    }
+  } catch (e) {
+    console.error('Ошибка загрузки ядер', e)
+  }
+}
+
+// --- ОТПРАВКА ЗАПРОСА НА СМЕНУ ---
+const confirmChangeCore = async () => {
+  if (!selectedNestId.value || !selectedEggId.value) return alert('Выберите ядро из списка!')
+  
+  if (!confirm('Внимание! Смена ядра приведет к полному удалению файлов сервера и установке нового ядра. Продолжить?')) return
+
+  isCoreChanging.value = true
+  try {
+    if (!service.value) return
+    const { error } = await useApiFetch(`/api/services/${service.value.id}/change-core`, {
+      method: 'POST',
+      body: {
+        nest_id: selectedNestId.value,
+        egg_id: selectedEggId.value
+      }
+    })
+    
+    if (error.value) throw error.value
+    
+    alert('Ядро успешно изменено! Сервер отправлен на переустановку.')
+    isChangeCoreOpen.value = false
+    fetchService()
+  } catch (e: any) {
+    alert(e.data?.message || e.message || 'Ошибка смены ядра')
+  } finally {
+    isCoreChanging.value = false
+  }
+}
+
+// --- УПРАВЛЕНИЕ БИЛЛИНГОМ ---
 const toggleAutoRenew = async () => {
   if (!service.value) return
   const oldState = service.value.auto_renew
@@ -96,17 +308,14 @@ const formatDateFull = (dateStr?: string) => {
 }
 const goToPanel = () => { window.open(PANEL_URL, '_blank') }
 
-// 🔥 ОБНОВЛЕННАЯ ЛОГИКА ЗАГРУЗКИ
 onMounted(async () => {
-  // 1. Грузим данные о сервисе
   await fetchService()
+  fetchNests()
   
-  // 2. 🔥 ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ЮЗЕРА, ЧТОБЫ ПОДТЯНУТЬ ПАРОЛЬ ОТ ПАНЕЛИ
-  // Это нужно, если пароль был сгенерирован при покупке, но стейт авторизации старый
   try {
     const { data } = await useApiFetch<any>('/api/user')
     if (data.value) {
-      auth.user = data.value // Обновляем данные в сторе (Pinia)
+      auth.user = data.value
     }
   } catch (e) {
     console.error('Ошибка обновления профиля:', e)
@@ -125,6 +334,60 @@ onMounted(async () => {
       @close="isDeleteModalOpen = false"
       @confirm="confirmDelete"
     />
+
+    <div v-if="isChangeCoreOpen" class="modal-backdrop">
+      <div class="modal-window glass-panel extended-modal">
+        <h2 class="panel-title">Смена ядра (Reinstall)</h2>
+        <p class="text-xs text-gray-400 mb-4">
+          Внимание: Смена ядра приведет к <span class="text-red-500 font-bold">полному удалению файлов</span> сервера и установке нового ядра.
+        </p>
+        
+        <div class="search-box mb-4">
+             <IconSearch class="search-icon"/>
+             <input v-model="searchQuery" placeholder="Поиск ядра (Vanilla, Paper...)" class="search-input">
+        </div>
+
+        <div class="explorer-container custom-scrollbar mb-4">
+             <TransitionGroup name="list">
+                <FileExplorer 
+                  v-for="key in Object.keys(filteredTree).sort((a,b) => {
+                      const nodeA = filteredTree[a];
+                      const nodeB = filteredTree[b];
+                      if (nodeA.isPriority && !nodeB.isPriority) return -1;
+                      if (!nodeA.isPriority && nodeB.isPriority) return 1;
+                      return a.localeCompare(b);
+                  })" 
+                  :key="key" 
+                  :node="filteredTree[key]" 
+                  :selectedId="selectedEggId"
+                  @select="onSelectEgg" 
+                />
+             </TransitionGroup>
+             <div v-if="Object.keys(filteredTree).length === 0" class="empty-msg">
+                Ничего не найдено
+             </div>
+        </div>
+
+        <div class="selected-core-preview" :class="{ 'has-selection': selectedEggId }">
+            <div class="scp-icon">
+                <IconCheck v-if="selectedEggId" class="w-4 h-4 text-green-400" />
+                <IconBox v-else class="w-4 h-4 text-gray-500" />
+            </div>
+            <div class="scp-info">
+                <span class="scp-label">ВЫБРАННОЕ ЯДРО</span>
+                <span class="scp-value">{{ selectedEggName || 'Не выбрано' }}</span>
+            </div>
+        </div>
+
+        <div class="modal-actions mt-4">
+          <button class="cosmic-btn danger" @click="isChangeCoreOpen = false">Отмена</button>
+          <button class="cosmic-btn" :disabled="isCoreChanging || !selectedEggId" @click="confirmChangeCore">
+            {{ isCoreChanging ? 'Установка...' : 'Установить' }}
+            <div class="btn-glow"></div>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <transition name="fade" mode="out-in">
       
@@ -173,7 +436,7 @@ onMounted(async () => {
                 </div>
 
                 <div class="status-main-text" :class="service.status">
-                  {{ service.status === 'active' ? 'ONLINE' : 'SUSPENDED' }}
+                  {{ service.status === 'active' ? 'ONLINE' : (service.status === 'installing' ? 'INSTALLING' : 'SUSPENDED') }}
                 </div>
 
                 <div class="status-footer">
@@ -234,23 +497,67 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="glass-panel mt-6 stagger-3">
-               <h2 class="panel-title">Ресурсы</h2>
-               <div class="specs-grid">
-                  <div class="spec-item">
-                    <IconCpu class="spec-icon" />
-                    <div class="spec-info"><span class="s-label">ТАРИФ</span><span class="s-val">{{ service.product?.name }}</span></div>
+            <div class="glass-panel mt-6 stagger-3 resource-panel-wrapper">
+               <div class="cyber-line-top"></div>
+
+               <div class="flex justify-between items-center mb-5 relative z-10">
+                  <h2 class="panel-title mb-0">
+                    <span class="text-icon">///</span> СИСТЕМНЫЕ РЕСУРСЫ
+                  </h2>
+                  
+                  <button class="tech-btn" @click="isChangeCoreOpen = true">
+                    <span class="btn-content">
+                      <IconBox class="w-3 h-3 mr-2" /> 
+                      <span>СМЕНИТЬ ЯДРО</span>
+                    </span>
+                    <div class="tech-btn-bg"></div>
+                  </button>
+               </div>
+               
+               <div class="resources-grid-v2">
+                  <div class="res-card-v2 core-module">
+                    <div class="card-bg-glow"></div>
+                    <div class="card-header">
+                      <IconCpu class="res-icon cpu-icon" />
+                      <span class="res-label">АКТИВНОЕ ЯДРО</span>
+                    </div>
+                    <div class="card-value-group">
+                      <div class="core-name">{{ service.core }}</div>
+                      <div class="core-status">
+                        <span class="blink-dot"></span> АКТИВНО
+                      </div>
+                    </div>
+                    <div class="decor-corner-br"></div>
                   </div>
-                  <div class="spec-item">
-                    <IconRam class="spec-icon" />
-                    <div class="spec-info"><span class="s-label">ЯДРО</span><span class="s-val">{{ service.core }}</span></div>
+
+                  <div class="res-card-v2 tariff-module">
+                    <div class="card-header">
+                      <IconRam class="res-icon" />
+                      <span class="res-label">ТАРИФ / ПЛАН</span>
+                    </div>
+                    <div class="card-value-group">
+                       <div class="main-val">{{ service.product?.name }}</div>
+                       <div class="sub-bar">
+                          <div class="bar-fill" style="width: 75%"></div>
+                       </div>
+                    </div>
                   </div>
-                  <div class="spec-item">
-                    <IconDisk class="spec-icon" />
-                    <div class="spec-info"><span class="s-label">ЦЕНА</span><span class="s-val">{{ Number(service.price_monthly).toFixed(0) }} ₽</span></div>
+
+                  <div class="res-card-v2 price-module">
+                    <div class="card-header">
+                      <IconDisk class="res-icon" />
+                      <span class="res-label">СТОИМОСТЬ</span>
+                    </div>
+                    <div class="card-value-group">
+                       <div class="price-val">
+                          {{ Number(service.price_monthly).toFixed(0) }} <span class="currency">₽</span>
+                       </div>
+                       <div class="price-cycle">Ежемесячно</div>
+                    </div>
                   </div>
                </div>
             </div>
+
           </div>
 
           <div class="right-col">
@@ -283,11 +590,47 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* Твои стили - оставляю без изменений для экономии места, так как они были в вопросе */
+/* СТИЛИ МОДАЛКИ И НОВЫХ ЭЛЕМЕНТОВ */
+.modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-window { width: 100%; max-width: 450px; display: flex; flex-direction: column; max-height: 80vh; }
+.extended-modal { max-width: 650px; } 
+
+.search-box { position: relative; width: 100%; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; color: #666; }
+.search-input { width: 100%; padding: 10px 10px 10px 38px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; color: #fff; font-size: 13px; transition: 0.2s; box-sizing: border-box; }
+.search-input:focus { border-color: rgba(168, 85, 247, 0.5); outline: none; background: rgba(168, 85, 247, 0.05); }
+
+.explorer-container { 
+  flex: 1; overflow-y: auto; 
+  padding: 4px; margin: -4px; 
+  background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);
+  min-height: 250px;
+}
+.empty-msg { text-align: center; color: #555; padding: 40px; }
+
+/* Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+/* Selected Core Preview */
+.selected-core-preview { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; transition: 0.3s; }
+.selected-core-preview.has-selection { background: rgba(34, 197, 94, 0.05); border-color: rgba(34, 197, 94, 0.2); }
+.scp-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 8px; }
+.scp-info { display: flex; flex-direction: column; }
+.scp-label { font-size: 10px; color: #666; font-weight: 700; letter-spacing: 0.5px; }
+.scp-value { font-size: 13px; color: #ddd; font-weight: 600; }
+.has-selection .scp-value { color: #fff; }
+
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+.small-action-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; font-size: 10px; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; }
+.small-action-btn:hover { background: #a855f7; color: white; border-color: #a855f7; }
+
+/* Styles */
 .cyber-page { position: relative; width: 100%; max-width: 1350px; margin: 0; padding-bottom: 100px; font-family: 'Inter', sans-serif; }
 .content-wrapper { position: relative; z-index: 10; padding: 0 0; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 .mt-6 { margin-top: 24px; }
+.mt-4 { margin-top: 16px; }
 .w-full { width: 100%; }
 .grid-layout { display: grid; grid-template-columns: 1fr; gap: 30px; }
 @media(min-width: 1024px) { .grid-layout { grid-template-columns: 1.3fr 0.7fr; gap: 40px; } }
@@ -332,12 +675,6 @@ onMounted(async () => {
 .copy-btn:hover { background: rgba(255,255,255,0.1); color: white; }
 .text-btn { font-size: 10px; font-weight: 700; width: 80px; }
 .icon-success { color: #22c55e; }
-.specs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.spec-item { background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%); border: 1px solid rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; transition: 0.3s; }
-.spec-item:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-2px); }
-.spec-icon { width: 24px; height: 24px; color: #555; }
-.s-label { font-size: 9px; color: #666; letter-spacing: 1px; margin-top: 4px; display: block; }
-.s-val { font-size: 14px; color: white; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
 .billing-info { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
 .b-row { display: flex; justify-content: space-between; font-size: 12px; color: #777; letter-spacing: 0.5px; }
 .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); margin: 24px 0; }
@@ -374,6 +711,7 @@ onMounted(async () => {
 .status-glow-bg { position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; filter: blur(80px); opacity: 0.25; transition: 0.5s; border-radius: 50%; }
 .status-glow-bg.active { background: #22c55e; }
 .status-glow-bg.stopped { background: #ef4444; }
+.status-glow-bg.installing { background: #c084fc; } 
 .panel-content { position: relative; z-index: 2; padding: 24px 30px; display: flex; flex-direction: column; gap: 16px; }
 .status-header { display: flex; justify-content: space-between; align-items: center; }
 .panel-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #555; }
@@ -383,10 +721,12 @@ onMounted(async () => {
 .live-indicator.active .dot { background: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.6); }
 .live-indicator.active .ping-ring { background: #22c55e; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
 .live-indicator.stopped .dot { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); }
+.live-indicator.installing .dot { background: #c084fc; box-shadow: 0 0 10px rgba(192, 132, 252, 0.6); }
 @keyframes ping { 75%, 100% { transform: scale(2.5); opacity: 0; } }
 .status-main-text { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 800; letter-spacing: -1px; color: #333; transition: 0.3s; }
 .status-main-text.active { color: #fff; text-shadow: 0 0 30px rgba(34, 197, 94, 0.3); }
 .status-main-text.stopped { color: #ef4444; text-shadow: 0 0 30px rgba(239, 68, 68, 0.3); }
+.status-main-text.installing { color: #c084fc; text-shadow: 0 0 30px rgba(192, 132, 252, 0.3); }
 .status-footer { display: flex; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
 .footer-item { display: flex; flex-direction: column; gap: 2px; }
 .f-label { font-size: 10px; color: #555; font-weight: 600; letter-spacing: 0.5px; }
@@ -394,4 +734,258 @@ onMounted(async () => {
 .f-val.ok { color: #22c55e; }
 .f-val.err { color: #ef4444; }
 .vertical-line { width: 1px; height: 20px; background: rgba(255,255,255,0.05); }
+.text-purple-400 { color: #c084fc; }
+.text-red-500 { color: #ef4444; }
+.text-green-400 { color: #4ade80; }
+.text-gray-500 { color: #6b7280; }
+.font-bold { font-weight: 700; }
+.w-4 { width: 1rem; }
+.h-4 { height: 1rem; }
+.flex { display: flex; }
+.justify-between { justify-content: space-between; }
+.items-center { align-items: center; }
+.mb-0 { margin-bottom: 0 !important; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-5 { margin-bottom: 1.25rem; }
+.mr-2 { margin-right: 0.5rem; }
+.w-3 { width: 0.75rem; }
+.h-3 { height: 0.75rem; }
+.cosmic-btn.danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+.cosmic-btn.danger:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: white; }
+
+/* --- НОВЫЕ СТИЛИ ДЛЯ ПАНЕЛИ РЕСУРСОВ --- */
+.resource-panel-wrapper {
+  background: linear-gradient(160deg, rgba(10, 10, 15, 0.8) 0%, rgba(20, 20, 25, 0.6) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.cyber-line-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #a855f7, transparent);
+  opacity: 0.5;
+}
+
+.text-icon {
+  color: #a855f7;
+  margin-right: 8px;
+  font-weight: 900;
+  letter-spacing: -2px;
+}
+
+.resources-grid-v2 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 0.8fr; 
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .resources-grid-v2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.res-card-v2 {
+  position: relative;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 16px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 100px;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.res-card-v2:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.res-icon {
+  width: 14px;
+  height: 14px;
+  color: #666;
+  transition: 0.3s;
+}
+
+.res-card-v2:hover .res-icon {
+  color: #fff;
+}
+
+.res-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #555;
+  text-transform: uppercase;
+}
+
+.card-value-group {
+  position: relative;
+  z-index: 2;
+}
+
+/* === CORE MODULE === */
+.core-module {
+  background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.1), transparent 70%), rgba(255, 255, 255, 0.02);
+  border-color: rgba(168, 85, 247, 0.2);
+}
+
+.core-module:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.1);
+}
+
+.core-module .res-icon {
+  color: #a855f7;
+}
+
+.core-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.core-status {
+  font-size: 9px;
+  color: #a855f7;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.blink-dot {
+  width: 4px;
+  height: 4px;
+  background: #a855f7;
+  border-radius: 50%;
+  box-shadow: 0 0 5px #a855f7;
+  animation: blink 2s infinite;
+}
+
+.decor-corner-br {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 20px 20px;
+  border-color: transparent transparent rgba(168, 85, 247, 0.2) transparent;
+}
+
+/* === TARIFF MODULE === */
+.main-val {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ddd;
+  margin-bottom: 8px;
+}
+
+.sub-bar {
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: #60a5fa;
+  box-shadow: 0 0 8px #60a5fa;
+}
+
+.tariff-module:hover .bar-fill {
+  background: #93c5fd;
+}
+
+/* === PRICE MODULE === */
+.price-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.currency {
+  font-size: 12px;
+  color: #666;
+  font-weight: 400;
+}
+
+.price-cycle {
+  font-size: 9px;
+  color: #444;
+  margin-top: 2px;
+}
+
+/* === TECH BUTTON === */
+.tech-btn {
+  position: relative;
+  background: transparent;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: 0.2s;
+}
+
+.tech-btn .btn-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a855f7;
+  letter-spacing: 1px;
+}
+
+.tech-btn-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 100%;
+  background: #a855f7;
+  z-index: 1;
+  transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tech-btn:hover {
+  border-color: #a855f7;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
+}
+
+.tech-btn:hover .tech-btn-bg {
+  width: 100%;
+}
+
+.tech-btn:hover .btn-content {
+  color: #fff;
+}
 </style>

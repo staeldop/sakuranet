@@ -29,6 +29,79 @@ class ServiceController extends Controller
         return $request->user()->services()->with('product')->findOrFail($id);
     }
 
+    // 🔥 СМЕНА ЯДРА
+    public function changeCore(Request $request, $id)
+    {
+        $request->validate([
+            'nest_id' => 'required|integer',
+            'egg_id'  => 'required|integer',
+        ]);
+
+        $service = $request->user()->services()->findOrFail($id);
+        
+        // Проверка: есть ли ID сервера в базе
+        if (empty($service->ptero_server_id)) {
+            return response()->json(['message' => 'Ошибка: ID сервера не найден в базе данных (ptero_server_id is null). Пересоздайте сервис.'], 500);
+        }
+
+        try {
+            $eggData = $this->pterodactyl->getEgg($request->nest_id, $request->egg_id);
+            if (!$eggData) {
+                return response()->json(['message' => 'Ядро не найдено в панели (404)'], 404);
+            }
+
+            // Умный сбор переменных
+            $environment = [];
+            if (isset($eggData['relationships']['variables']['data'])) {
+                foreach ($eggData['relationships']['variables']['data'] as $var) {
+                    $attr = $var['attributes'];
+                    $key = $attr['env_variable'];
+                    
+                    if (!is_null($attr['default_value']) && $attr['default_value'] !== '') {
+                        $val = $attr['default_value'];
+                    } else {
+                        $rules = $attr['rules'] ?? '';
+                        if (str_contains($rules, 'required')) {
+                            if (str_contains($rules, 'numeric') || str_contains($rules, 'integer')) {
+                                $val = '0';
+                            } elseif (str_contains($rules, 'boolean')) {
+                                $val = '0'; 
+                            } else {
+                                $val = 'changeme';
+                            }
+                        } else {
+                            $val = '';
+                        }
+                    }
+                    $environment[$key] = (string) $val;
+                }
+            }
+
+            // 🔥 ИСПРАВЛЕНО: используем ptero_server_id
+            $this->pterodactyl->updateServerStartup($service->ptero_server_id, [
+                'egg' => (int) $request->egg_id,
+                'image' => $eggData['docker_image'],
+                'startup' => $eggData['startup'],
+                'environment' => $environment,
+                'skip_scripts' => false
+            ]);
+
+            // 🔥 ИСПРАВЛЕНО: используем ptero_server_id
+            $this->pterodactyl->reinstallServer($service->ptero_server_id);
+
+            $service->update([
+                'core' => $eggData['name'],
+                'status' => 'installing'
+            ]);
+
+            return response()->json(['message' => 'Ядро успешно изменено! Идет переустановка.']);
+
+        } catch (\Exception $e) {
+            Log::error('Core change error: ' . $e->getMessage());
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
+
     // 🔥 ПОКУПКА УСЛУГИ
     public function store(Request $request)
     {
@@ -39,13 +112,12 @@ class ServiceController extends Controller
             'nest_id'    => 'nullable|integer',
             'egg_id'     => 'nullable|integer',
             'docker_image' => 'nullable|string',
-            'environment' => 'nullable|array' // Разрешаем кастомные переменные (если нужно)
+            'environment' => 'nullable|array'
         ]);
 
         $user = $request->user();
         $product = Product::findOrFail($request->product_id);
 
-        // 1. Расчет цены
         $months = $request->period;
         $discount = 0;
         if ($months >= 3) $discount = 0.05;
@@ -55,100 +127,65 @@ class ServiceController extends Controller
         $totalPrice = ($product->price * $months) * (1 - $discount);
 
         if ($user->balance < $totalPrice) {
-             return response()->json(['message' => 'Недостаточно средств. Пополните баланс.'], 402);
+             return response()->json(['message' => 'Недостаточно средств.'], 402);
         }
 
         return DB::transaction(function () use ($user, $product, $request, $totalPrice, $months) {
             
-            // Списываем баланс
             $user->decrement('balance', $totalPrice);
 
-            // --- 2. PTERODACTYL USER ---
-            $pteroUser = $this->pterodactyl->findUserByEmail($user->email);
-            $pteroUserId = null;
-            $newPassword = null; 
-
-            if ($pteroUser) {
-                $pteroUserId = $pteroUser['id'];
-                // Синхронизируем ID если он отличается
-                if ($user->pterodactyl_id !== $pteroUserId) {
-                    $user->update(['pterodactyl_id' => $pteroUserId]);
+            // --- USER ---
+            try {
+                $pteroUser = $this->pterodactyl->findUserByEmail($user->email);
+                if ($pteroUser) {
+                    $pteroUserId = $pteroUser['id'];
+                    $newPassword = null;
+                    if ($user->pterodactyl_id !== $pteroUserId) $user->update(['pterodactyl_id' => $pteroUserId]);
+                } else {
+                    $newPassword = Str::random(12) . '!1a'; 
+                    $nameParts = explode(' ', $user->name, 2);
+                    $newPteroUser = $this->pterodactyl->createUser([
+                        'email'      => $user->email,
+                        'username'   => 'client_' . $user->id . '_' . Str::random(3),
+                        'first_name' => preg_replace('/[^a-zA-Z0-9._-]/', '', $nameParts[0]) ?: 'Client',
+                        'last_name'  => isset($nameParts[1]) ? preg_replace('/[^a-zA-Z0-9._-]/', '', $nameParts[1]) : 'User',
+                        'password'   => $newPassword
+                    ]);
+                    $pteroUserId = $newPteroUser['attributes']['id'];
+                    $user->update(['pterodactyl_id' => $pteroUserId, 'ptero_password' => $newPassword]);
                 }
-            } else {
-                $newPassword = Str::random(12) . '!1a'; 
-                // Очистка имени от спецсимволов для Pterodactyl
-                $nameParts = explode(' ', $user->name, 2);
-                $firstName = preg_replace('/[^a-zA-Z0-9а-яА-Я._-]/u', '', $nameParts[0]) ?: 'Client';
-                $lastName = isset($nameParts[1]) ? preg_replace('/[^a-zA-Z0-9а-яА-Я._-]/u', '', $nameParts[1]) : 'User';
-
-                $newPteroUser = $this->pterodactyl->createUser([
-                    'email'      => $user->email,
-                    'username'   => 'client_' . $user->id . '_' . Str::random(3),
-                    'first_name' => $firstName,
-                    'last_name'  => $lastName,
-                    'password'   => $newPassword
-                ]);
-
-                if (!isset($newPteroUser['attributes']['id'])) {
-                    $msg = 'Ошибка создания юзера.';
-                    if (isset($newPteroUser['errors'][0]['detail'])) $msg .= ' ' . $newPteroUser['errors'][0]['detail'];
-                    throw new \Exception($msg);
-                }
-                $pteroUserId = $newPteroUser['attributes']['id'];
-                
-                // Сохраняем пароль во временное поле (если оно есть) или просто ID
-                // Лучше не хранить пароль в открытом виде долго, но для выдачи клиенту нужно
-                $user->update([
-                    'pterodactyl_id' => $pteroUserId, 
-                    'ptero_password' => $newPassword
-                ]);
+            } catch (\Exception $e) {
+                throw new \Exception('Ошибка пользователя: ' . $e->getMessage());
             }
 
-            // --- 3. ПОДГОТОВКА ДАННЫХ СЕРВЕРА ---
-            // Если в запросе пришли nest/egg, используем их, иначе дефолтные из товара
-            $nestId = $request->nest_id ? (int)$request->nest_id : (int)$product->ptero_nest_id;
-            $eggId  = $request->egg_id ? (int)$request->egg_id : (int)$product->ptero_egg_id;
-            
-            if (!$nestId || !$eggId) {
-                // Если нигде не указано, берем Minecraft Paper (пример) или кидаем ошибку
-                throw new \Exception('Не выбрано ядро (Egg ID). Обратитесь к администратору.');
-            }
+            // --- SERVER ---
+            $nestId = $request->nest_id ?: $product->ptero_nest_id;
+            $eggId  = $request->egg_id ?: $product->ptero_egg_id;
+            if (!$nestId || !$eggId) throw new \Exception('Не выбрано ядро.');
 
-            // 🔥 ЗАПРАШИВАЕМ ДЕТАЛИ ЯЙЦА (ВМЕСТЕ С ПЕРЕМЕННЫМИ)
             $eggData = $this->pterodactyl->getEgg($nestId, $eggId);
-            if (!$eggData) throw new \Exception('Ядро не найдено в панели.');
+            if (!$eggData) throw new \Exception('Ядро не найдено.');
 
-            // Определяем Image и Startup
-            $image = $request->docker_image ?: $eggData['docker_image'];
-            $startup = $eggData['startup'];
-
-            // 🔥 СОБИРАЕМ ПЕРЕМЕННЫЕ (Environment)
-            // Берем их из самого яйца (отношения 'variables')
             $environment = [];
-            
-            // Если в API прилетел список переменных relationships
             if (isset($eggData['relationships']['variables']['data'])) {
                 foreach ($eggData['relationships']['variables']['data'] as $var) {
-                    $envCode = $var['attributes']['env_variable'];
-                    $defaultVal = $var['attributes']['default_value'];
-                    
-                    // Если пользователь/фронт прислал свое значение для этой переменной - берем его
-                    if ($request->has('environment') && isset($request->environment[$envCode])) {
-                        $environment[$envCode] = $request->environment[$envCode];
-                    } else {
-                        $environment[$envCode] = $defaultVal;
-                    }
+                    $attr = $var['attributes'];
+                    $val  = $attr['default_value'] ?? '';
+                    $sentEnv = $request->input('environment', []);
+                    $environment[$attr['env_variable']] = (string)($sentEnv[$attr['env_variable']] ?? $val);
                 }
             }
+
+            $locationId = 1; 
 
             $serverData = [
                 'name' => $request->name,
                 'user' => (int) $pteroUserId,
-                'nest' => $nestId,
-                'egg'  => $eggId,
-                'docker_image' => $image,
-                'startup' => $startup,
-                'environment' => $environment, // 🔥 Теперь тут полные переменные
+                'nest' => (int) $nestId,
+                'egg'  => (int) $eggId,
+                'docker_image' => $request->docker_image ?: $eggData['docker_image'],
+                'startup' => $eggData['startup'],
+                'environment' => $environment,
                 'limits' => [
                     'memory' => (int) ($product->memory ?: 1024),
                     'swap'   => 0,
@@ -162,7 +199,7 @@ class ServiceController extends Controller
                     'allocations' => (int) $product->allocations
                 ],
                 'deploy' => [
-                    'locations' => [1], // ID локации, желательно вынести в конфиг или товар
+                    'locations' => [$locationId], 
                     'dedicated_ip' => false,
                     'port_range' => []
                 ],
@@ -170,29 +207,21 @@ class ServiceController extends Controller
 
             try {
                 $pteroServer = $this->pterodactyl->createServer($serverData);
+                $attributes = $pteroServer['attributes'];
             } catch (\Exception $e) {
-                Log::error('Ptero API Error: ' . $e->getMessage());
-                throw new \Exception('Сбой API панели при создании сервера: ' . $e->getMessage());
+                throw new \Exception('Сбой создания: ' . $e->getMessage());
             }
 
-            if (isset($pteroServer['errors'])) {
-                Log::error('Ptero Validation Error', $pteroServer);
-                $errDetail = $pteroServer['errors'][0]['detail'] ?? 'Неизвестная ошибка валидации Pterodactyl';
-                throw new \Exception($errDetail);
-            }
-
-            $attributes = $pteroServer['attributes'];
-
-            // --- 4. СОХРАНЕНИЕ ---
+            // 🔥 ИСПРАВЛЕНО: поле ptero_server_id
             $service = Service::create([
                 'user_id'       => $user->id,
                 'product_id'    => $product->id,
                 'name'          => $attributes['name'],
                 'identifier'    => $attributes['identifier'],
-                'ptero_id'      => $attributes['id'], // Используем поле ptero_id (проверь миграцию!)
+                'ptero_server_id' => $attributes['id'], // <--- ВОТ ЗДЕСЬ БЫЛА ОШИБКА
                 'ip_address'    => 'Установка...',
-                'core'          => $eggData['name'] ?? ('Egg #' . $eggId), 
-                'status'        => 'active',
+                'core'          => $eggData['name'], 
+                'status'        => 'installing',
                 'price_monthly' => $product->price,
                 'expires_at'    => now()->addMonths($months),
             ]);
@@ -209,7 +238,10 @@ class ServiceController extends Controller
     {
         $service = $request->user()->services()->findOrFail($id);
         
-        // Тут можно добавить $this->pterodactyl->deleteServer($service->ptero_id);
+        // Для удаления сервера в панели раскомментируй:
+        // if ($service->ptero_server_id) {
+        //     try { $this->pterodactyl->deleteServer($service->ptero_server_id); } catch (\Exception $e) {}
+        // }
         
         $service->delete();
         return response()->json(['message' => 'Услуга удалена']);

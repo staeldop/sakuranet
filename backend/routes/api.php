@@ -8,7 +8,7 @@ use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\Api\TicketController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Admin\ServerController;
-use App\Http\Controllers\EggController; // 🔥 Убедись, что этот файл создан
+use App\Http\Controllers\EggController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 
@@ -55,6 +55,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/services', [ServiceController::class, 'store']);
     Route::get('/services/{id}', [ServiceController::class, 'show']);
     Route::delete('/services/{id}', [ServiceController::class, 'destroy']);
+    
+    // 🔥 НОВЫЙ РОУТ СМЕНЫ ЯДРА
+    Route::post('/services/{id}/change-core', [ServiceController::class, 'changeCore']);
 
     // ТИКЕТЫ
     Route::get('/tickets', [TicketController::class, 'index']);         
