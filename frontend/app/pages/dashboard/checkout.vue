@@ -34,13 +34,14 @@ const periods = [
 
 const IGNORED_PATH_WORDS = ['game_eggs', 'twitch', 'voice_servers', 'other', 'misc', 'software']
 
-// --- ЛОГИКА ДЕРЕВА (Без изменений) ---
+// --- ЛОГИКА ДЕРЕВА (С ЗАЩИТОЙ ОТ ОШИБОК) ---
 const buildTreeCorrected = (nestsData: any[]) => {
   const root: any = {}
   const prioritySet = new Set<string>()
 
   // 1. Собираем приоритеты
   nestsData.forEach(nest => {
+    if (!nest.attributes?.relationships?.eggs?.data) return;
     nest.attributes.relationships.eggs.data.forEach((egg: any) => {
       const desc = egg.attributes.description || ''
       const priorityMatch = desc.match(/\[priority:\s*([^\]]+)\]/i)
@@ -51,10 +52,11 @@ const buildTreeCorrected = (nestsData: any[]) => {
   // 2. Строим дерево
   nestsData.forEach(nest => {
     const nestName = nest.attributes.name
-    const eggs = nest.attributes.relationships.eggs.data
+    const eggs = nest.attributes.relationships?.eggs?.data
     
     if (!eggs || eggs.length === 0) return
 
+    // Создаем корневую категорию
     if (!root[nestName]) {
       root[nestName] = {
         name: nestName,
@@ -81,6 +83,7 @@ const buildTreeCorrected = (nestsData: any[]) => {
         })
       }
 
+      // Убираем дублирование имен в пути (Paper > Paper -> Paper)
       if (pathParts.length > 0) {
         const lastFolder = pathParts[pathParts.length - 1].toLowerCase()
         const eggName = egg.attributes.name.toLowerCase()
@@ -92,6 +95,7 @@ const buildTreeCorrected = (nestsData: any[]) => {
       let currentLevel = root[nestName].children
 
       pathParts.forEach(part => {
+        // Если папки нет - создаем
         if (!currentLevel[part]) {
           currentLevel[part] = { 
             name: part, 
@@ -101,14 +105,41 @@ const buildTreeCorrected = (nestsData: any[]) => {
             isPriority: prioritySet.has(part.toLowerCase()) 
           }
         }
+        // 🔥 ФИКС ОШИБКИ: Если на этом месте стоит ФАЙЛ, превращаем его в ПАПКУ
+        else if (currentLevel[part].type === 'file') {
+             const existingFile = currentLevel[part]; // Сохраняем файл
+             currentLevel[part] = {
+                 name: part,
+                 type: 'folder',
+                 children: {}, // Создаем детей
+                 containsSelected: false,
+                 isPriority: existingFile.isPriority
+             };
+             // Возвращаем файл обратно, но уже внутрь папки
+             currentLevel[part].children[existingFile.name] = existingFile;
+        }
+
         currentLevel = currentLevel[part].children
       })
       
-      currentLevel[egg.attributes.name] = { 
-        name: egg.attributes.name, 
-        type: 'file', 
-        data: egg,
-        isPriority: false 
+      // Добавляем само ядро (файл)
+      // Если мы хотим положить файл, а там уже папка с таким именем - кладем внутрь
+      const eggName = egg.attributes.name;
+      
+      if (currentLevel[eggName] && currentLevel[eggName].type === 'folder') {
+          currentLevel[eggName].children[eggName] = { 
+            name: eggName, 
+            type: 'file', 
+            data: egg,
+            isPriority: false 
+          }
+      } else {
+          currentLevel[eggName] = { 
+            name: eggName, 
+            type: 'file', 
+            data: egg,
+            isPriority: false 
+          }
       }
     })
   })
@@ -122,13 +153,16 @@ const filterNode = (node: any, query: string): any => {
   }
   const filteredChildren: any = {}
   let hasMatchingChildren = false
-  Object.keys(node.children).forEach(key => {
-    const result = filterNode(node.children[key], query)
-    if (result) {
-      filteredChildren[key] = result
-      hasMatchingChildren = true
-    }
-  })
+  
+  if (node.children) {
+      Object.keys(node.children).forEach(key => {
+        const result = filterNode(node.children[key], query)
+        if (result) {
+          filteredChildren[key] = result
+          hasMatchingChildren = true
+        }
+      })
+  }
   if (hasMatchingChildren) {
     return { ...node, children: filteredChildren, containsSelected: true }
   }
@@ -161,7 +195,6 @@ const totalPrice = computed(() => {
 
 const formatPrice = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val)
 
-// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ ПОКУПКИ
 const handleCheckout = async () => {
   if (!serverName.value.trim()) return alert('Введите имя сервера')
   if (!selectedEgg.value) return alert('Выберите ядро')
@@ -217,8 +250,19 @@ onMounted(async () => {
     if (prodData.value) product.value = prodData.value.find((p: any) => p.id == id)
     
     const { data: treeData } = await useApiFetch<any>('/api/eggs/tree')
-    if (treeData.value && treeData.value.data) {
-      fileTree.value = buildTreeCorrected(treeData.value.data)
+    
+    // Поддержка и плоского массива, и JSON:API
+    let nestsArray = [];
+    if (treeData.value) {
+        if (Array.isArray(treeData.value)) {
+            nestsArray = treeData.value;
+        } else if (Array.isArray(treeData.value.data)) {
+            nestsArray = treeData.value.data;
+        }
+    }
+
+    if (nestsArray.length > 0) {
+      fileTree.value = buildTreeCorrected(nestsArray)
     }
   } catch (e) { console.error(e) } finally { isLoading.value = false }
 })
@@ -231,8 +275,10 @@ onMounted(async () => {
       <div class="header-row">
         <button @click="router.back()" class="back-link"><IconArrow class="icon-arrow" /> Назад</button>
         <div class="title-group">
-          <h1 class="page-title">Сборка сервера</h1>
-          <p class="subtitle">Выберите конфигурацию для {{ product?.name }}</p>
+          <ClientOnly>
+             <h1 class="page-title">Сборка сервера</h1>
+             <p class="subtitle">Выберите конфигурацию для {{ product?.name }}</p>
+          </ClientOnly>
         </div>
       </div>
 
@@ -310,37 +356,43 @@ onMounted(async () => {
             <div class="summary-header">
               <img :src="imgFlagDE" class="flag-icon" />
               <div class="prod-info">
-                <h3 class="prod-name">{{ product?.name }}</h3>
-                <span class="prod-cat">Falkenstein, DE</span>
+                <ClientOnly>
+                    <h3 class="prod-name">{{ product?.name || '...' }}</h3>
+                    <span class="prod-cat">Falkenstein, DE</span>
+                </ClientOnly>
               </div>
             </div>
 
-            <div class="price-section">
-              <div class="price-val">{{ formatPrice(totalPrice) }}</div>
-              <div class="price-sub">за {{ selectedPeriod }} мес.</div>
-            </div>
+            <ClientOnly>
+                <div class="price-section">
+                <div class="price-val">{{ formatPrice(totalPrice) }}</div>
+                <div class="price-sub">за {{ selectedPeriod }} мес.</div>
+                </div>
+            </ClientOnly>
 
             <div class="divider"></div>
 
-            <div class="specs-list">
-               <div class="spec-row">
-                 <span class="label">CPU</span>
-                 <span class="val">{{ product?.cpu_limit }}%</span>
-               </div>
-               <div class="spec-row">
-                 <span class="label">RAM</span>
-                 <span class="val">{{ product?.memory_mb }} MB</span>
-               </div>
-               <div class="spec-row">
-                 <span class="label">NVMe Disk</span>
-                 <span class="val">{{ product?.disk_mb }} MB</span>
-               </div>
-               
-               <div class="selected-core-box" :class="{ 'has-core': selectedEgg }">
-                 <div class="sc-label">Ядро</div>
-                 <div class="sc-val">{{ selectedEgg ? selectedEgg.attributes.name : 'Не выбрано' }}</div>
-               </div>
-            </div>
+            <ClientOnly>
+                <div class="specs-list">
+                <div class="spec-row">
+                    <span class="label">CPU</span>
+                    <span class="val">{{ product?.cpu_limit ? product.cpu_limit + '%' : '...' }}</span>
+                </div>
+                <div class="spec-row">
+                    <span class="label">RAM</span>
+                    <span class="val">{{ product?.memory_mb ? product.memory_mb + ' MB' : '...' }}</span>
+                </div>
+                <div class="spec-row">
+                    <span class="label">NVMe Disk</span>
+                    <span class="val">{{ product?.disk_mb ? product.disk_mb + ' MB' : '...' }}</span>
+                </div>
+                
+                <div class="selected-core-box" :class="{ 'has-core': selectedEgg }">
+                    <div class="sc-label">Ядро</div>
+                    <div class="sc-val">{{ selectedEgg ? selectedEgg.attributes.name : 'Не выбрано' }}</div>
+                </div>
+                </div>
+            </ClientOnly>
 
             <button @click="handleCheckout" :disabled="isSubmitting" class="checkout-btn">
               {{ isSubmitting ? 'Создание...' : 'Оплатить и создать' }}

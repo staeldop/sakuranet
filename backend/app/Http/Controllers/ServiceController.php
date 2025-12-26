@@ -120,7 +120,7 @@ class ServiceController extends Controller
 
             // Определяем Image и Startup
             $image = $request->docker_image ?: $eggData['docker_image'];
-            $startup = $product->ptero_startup ?: $eggData['startup'];
+            $startup = $eggData['startup'];
 
             // 🔥 СОБИРАЕМ ПЕРЕМЕННЫЕ (Environment)
             // Берем их из самого яйца (отношения 'variables')

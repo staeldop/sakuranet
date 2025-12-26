@@ -10,11 +10,13 @@ class EggController extends Controller
 {
     /**
      * Возвращает дерево Nests -> Eggs
+     * КЕШ ВКЛЮЧЕН (60 минут)
      */
     public function index(PterodactylService $ptero)
     {
-        // Кешируем результат на 60 минут, так как список ядер меняется редко.
-        // Это значительно ускорит загрузку страницы заказа.
+        // Кешируем результат на 1 час (3600 секунд).
+        // Если данные в панели изменятся, кеш сбросится сам через час, 
+        // либо вручную командой php artisan cache:clear
         $data = Cache::remember('ptero_nests_eggs_tree', 3600, function () use ($ptero) {
             return $ptero->getNestsWithEggs();
         });
