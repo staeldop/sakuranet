@@ -13,6 +13,7 @@ import IconCode from '~/assets/icons/code.svg?component'
 import imgFlagRU from '~/assets/flags/ru.png'
 import imgFlagDE from '~/assets/flags/de.png'
 import imgFlagFI from '~/assets/flags/fi.png'
+import IconBox from '~/assets/icons/box.svg?component'
 
 definePageMeta({
   layout: 'dashboard'
@@ -196,9 +197,13 @@ const getCardIcon = (product: any) => {
           </div>
         </div>
 
-        <div v-if="filteredProducts.length === 0" class="col-span-full text-center py-20 text-neutral-500">
-          В этой категории пока нет товаров.
-          <br><span class="text-xs text-neutral-700">Добавьте их через админ-панель.</span>
+        <div v-if="filteredProducts.length === 0" class="empty-state">
+          <div class="empty-icon-wrapper">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="empty-svg">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12.4856 1.12584C12.1836 0.958052 11.8164 0.958052 11.5144 1.12584L2.51436 6.12584L2.5073 6.13784L2.49287 6.13802C2.18749 6.3177 2 6.64568 2 7V16.9999C2 17.3631 2.19689 17.6977 2.51436 17.874L11.5022 22.8673C11.8059 23.0416 12.1791 23.0445 12.4856 22.8742L21.4856 17.8742C21.8031 17.6978 22 17.3632 22 17V7C22 6.64568 21.8125 6.31781 21.5071 6.13813C21.4996 6.13372 21.4921 6.12942 21.4845 6.12522L12.4856 1.12584ZM5.05923 6.99995L12.0001 10.856L14.4855 9.47519L7.74296 5.50898L5.05923 6.99995ZM16.5142 8.34816L18.9409 7L12 3.14396L9.77162 4.38195L16.5142 8.34816ZM4 16.4115V8.69951L11 12.5884V20.3004L4 16.4115ZM13 20.3005V12.5884L20 8.69951V16.4116L13 20.3005Z" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="empty-text">В этой категории пока нет товаров</div>
         </div>
 
       </div>
@@ -260,7 +265,45 @@ const getCardIcon = (product: any) => {
 .buy-btn { display: flex; align-items: center; justify-content: center; padding: 12px; background: transparent; border: 1px solid #262626; border-radius: 10px; color: #d4d4d4; font-size: 13px; font-weight: 500; text-decoration: none; transition: all 0.3s ease; white-space: nowrap; position: relative; z-index: 20; }
 .buy-btn:hover { background: #111; border-color: #404040; color: white; }
 
-/* 🔥 ВОЗВРАЩЕНИЕ ЛЕГЕНДЫ: ДИАГОНАЛЬНАЯ АНИМАЦИЯ */
+/* === ПУСТОЕ СОСТОЯНИЕ === */
+.empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  text-align: center;
+}
+.empty-icon-wrapper {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: #404040;
+}
+.empty-svg {
+  width: 38px;
+  height: 38px;
+  opacity: 0.8;
+}
+.empty-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #737373;
+  margin-bottom: 6px;
+}
+.empty-subtext {
+  font-size: 12px;
+  color: #404040;
+}
+
+/* 🔥 ДИАГОНАЛЬНАЯ АНИМАЦИЯ */
 .grid-diag-enter-active, .grid-diag-leave-active { transition: all 0.8s cubic-bezier(0.25, 0.8, 0.25, 1); }
 .grid-diag-leave-to { opacity: 0; transform: translate(20px, 20px); }
 .grid-diag-enter-from { opacity: 0; transform: translate(20px, 20px); }

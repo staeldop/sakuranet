@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { $api, useApiFetch } from '~/composables/useApi'
+// ИСПРАВЛЕНО: заменено $api на useApi
+import { useApi, useApiFetch } from '~/composables/useApi'
 
 // Иконки
 import IconBox from '~/assets/icons/box.svg?component'
@@ -109,7 +110,8 @@ const saveProduct = async () => {
     const url = editingId.value ? `/api/products/${editingId.value}` : '/api/products'
     const method = editingId.value ? 'PUT' : 'POST'
     
-    await $api(url, { method, body: form.value })
+    // ИСПРАВЛЕНО: $api -> useApi
+    await useApi(url, { method, body: form.value })
     await fetchProducts()
     isModalOpen.value = false
   } catch (e) {
@@ -121,7 +123,8 @@ const saveProduct = async () => {
 
 const deleteProduct = async (id: number) => {
   if (!confirm('Удалить товар?')) return
-  await $api(`/api/products/${id}`, { method: 'DELETE' })
+  // ИСПРАВЛЕНО: $api -> useApi
+  await useApi(`/api/products/${id}`, { method: 'DELETE' })
   products.value = products.value.filter(p => p.id !== id)
 }
 

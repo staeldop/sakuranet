@@ -111,9 +111,6 @@ const handlePayment = async () => {
 
 <template>
   <div class="finance-page">
-    <div class="glow glow-1" />
-    <div class="glow glow-2" />
-
     <div class="content-wrapper">
       <div class="page-header">
         <h1>Финансы</h1>
@@ -219,11 +216,11 @@ const handlePayment = async () => {
         <h2 class="section-title small">Последние операции</h2>
         
         <div v-if="isLoading" class="history-list">
-           <div class="history-item skeleton" v-for="i in 3" :key="i"></div>
+            <div class="history-item skeleton" v-for="i in 3" :key="i"></div>
         </div>
 
         <div v-else-if="transactions.length === 0" class="empty-history">
-           История операций пуста
+            История операций пуста
         </div>
 
         <div v-else class="history-list">
@@ -253,11 +250,7 @@ const handlePayment = async () => {
 .grid-layout { display: grid; grid-template-columns: 1fr; gap: 60px; margin-bottom: 50px; }
 @media (min-width: 1024px) { .grid-layout { grid-template-columns: 0.9fr 1.1fr; gap: 80px; } }
 
-.glow { position: absolute; width: 600px; height: 600px; border-radius: 50%; filter: blur(100px); opacity: 0.15; pointer-events: none; z-index: 0; }
-.glow-1 { top: -100px; left: -200px; background: radial-gradient(circle, #ff0055, transparent 70%); animation: floatGlow1 20s linear infinite; }
-.glow-2 { bottom: 0; right: -200px; background: radial-gradient(circle, #0055ff, transparent 70%); animation: floatGlow2 25s linear infinite; }
-@keyframes floatGlow1 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(40px, 30px); } }
-@keyframes floatGlow2 { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(-40px, -30px); } }
+/* Стили .glow удалены */
 
 .page-header { margin-bottom: 30px; }
 .page-header h1 { font-size: 32px; font-weight: 700; color: white; margin: 0; }
@@ -326,14 +319,13 @@ const handlePayment = async () => {
 .glass-input.big-text { font-size: 20px; font-weight: 700; padding-right: 30px; }
 .currency-abs { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: #555; pointer-events: none; }
 
-/* 🔥 УБИРАЕМ СТРЕЛОЧКИ (SPINNERS) 🔥 */
 .no-spinners::-webkit-outer-spin-button,
 .no-spinners::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 .no-spinners {
-  -moz-appearance: textfield; /* Для Firefox */
+  -moz-appearance: textfield; 
 }
 
 /* КНОПКА */

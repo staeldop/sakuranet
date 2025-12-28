@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useApiFetch, $api } from '~/composables/useApi'
+import { useApiFetch, useApi } from '~/composables/useApi'
 import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({ layout: 'dashboard' })
@@ -11,7 +11,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const ticketId = route.params.id
 
-// lazy: false, чтобы данные были сразу
+// Загрузка тикета
 const { data: ticket, pending, refresh, error } = await useApiFetch<any>(`/api/tickets/${ticketId}`)
 
 const messageText = ref('')
@@ -20,7 +20,6 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 // --- СКРОЛЛ И РЕСАЙЗ ---
-
 const scrollToBottom = async () => {
   await nextTick()
   if (messagesContainer.value) {
@@ -35,53 +34,55 @@ const autoResize = () => {
   el.style.height = Math.min(el.scrollHeight, 150) + 'px'
 }
 
-watch(() => ticket.value?.messages?.length, () => {
-  scrollToBottom()
-})
+watch(() => ticket.value?.messages?.length, () => scrollToBottom())
 
 onMounted(() => {
   if (ticket.value && !pending.value) scrollToBottom()
 })
 
 // --- ОТПРАВКА ---
-
 const sendMessage = async () => {
-  if (!messageText.value.trim()) return
+  const text = messageText.value.trim()
+  if (!text) return
 
-  const textToSend = messageText.value
   isSending.value = true
   
-  // 1. Чистим UI сразу
+  // Очистка поля
   messageText.value = ''
   if (textareaRef.value) textareaRef.value.style.height = '46px'
 
-  // 2. Временное сообщение
+  // Временное сообщение (оптимистичный UI)
   const tempId = Date.now()
   const tempMsg = {
-     id: tempId,
-     user_id: auth.user?.id,
-     message: textToSend,
-     created_at: new Date().toISOString(),
-     is_support: false, // Клиент
-     user: { name: 'Вы' }
+    id: tempId,
+    user_id: auth.user?.id,
+    message: text,
+    created_at: new Date().toISOString(),
+    is_support: false,
+    user: { name: 'Вы' }
   }
 
   if (ticket.value) {
-      if (!ticket.value.messages) ticket.value.messages = []
-      ticket.value.messages.push(tempMsg)
-      scrollToBottom()
+    if (!ticket.value.messages) ticket.value.messages = []
+    ticket.value.messages.push(tempMsg)
+    scrollToBottom()
   }
 
   try {
-    // 3. Отправляем на сервер
-    await $api(`/api/tickets/${ticketId}/reply`, {
+    // 🔥 ОТПРАВКА
+    await useApi(`/api/tickets/${ticketId}/reply`, {
       method: 'POST',
-      body: { message: textToSend }
+      body: { message: text }
     })
-    // НЕ вызываем refresh(), чтобы не было дерганья
-  } catch (e) {
-    alert('Ошибка отправки сообщения')
-    messageText.value = textToSend 
+    // Успех (можно вызвать refresh(), если нужны данные с сервера)
+  } catch (e: any) {
+    console.error('Ошибка отправки:', e)
+    // Показываем реальную ошибку
+    const errorMsg = e.data?.message || e.message || 'Неизвестная ошибка'
+    alert(`Не удалось отправить сообщение:\n${errorMsg}`)
+    
+    // Возвращаем текст в поле и удаляем временное сообщение
+    messageText.value = text
     if (ticket.value && ticket.value.messages) {
        ticket.value.messages = ticket.value.messages.filter((m: any) => m.id !== tempId)
     }
@@ -91,7 +92,6 @@ const sendMessage = async () => {
 }
 
 // --- ХЕЛПЕРЫ ---
-
 const getStatusLabel = (status: string) => {
   if (status === 'open') return 'В обработке'
   if (status === 'answered') return 'Есть ответ'
@@ -111,7 +111,6 @@ const isMyMessage = (msg: any) => !msg.is_support
 
 <template>
   <div class="chat-page">
-    
     <div v-if="pending" class="center-msg">Загрузка чата...</div>
     <div v-else-if="error" class="center-msg error">Тикет не найден</div>
 
@@ -176,46 +175,36 @@ const isMyMessage = (msg: any) => !msg.is_support
 
 <style scoped>
 .chat-page { 
-  /* Уменьшил вычет высоты, чтобы чат был выше */
-  height: calc(100vh - 20px); 
-  display: flex; flex-direction: column; max-width: 900px; margin: 0 auto;
+  height: 100%; 
+  display: flex; flex-direction: column; width: 100%;
 }
-
-.center-msg { 
-  flex-grow: 1; display: flex; align-items: center; justify-content: center; color: #888; 
-}
+.center-msg { flex-grow: 1; display: flex; align-items: center; justify-content: center; color: #888; }
 .center-msg.error { color: #ef4444; }
 
-.chat-layout {
-  display: flex; flex-direction: column; height: 100%;
-}
+.chat-layout { display: flex; flex-direction: column; flex-grow: 1; height: 100%; overflow: hidden; }
 
 .chat-header {
-  display: flex; align-items: center; gap: 15px; /* Уменьшил gap */
-  padding-bottom: 15px; /* Уменьшил padding */
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  margin-bottom: 15px; /* Уменьшил margin */
+  display: flex; align-items: center; gap: 15px; 
+  padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  flex-shrink: 0;
 }
 .back-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 14px; transition: 0.2s; }
 .back-btn:hover { color: #fff; }
 
-.header-info { display: flex; align-items: center; gap: 10px; /* Уменьшил gap */ }
+.header-info { display: flex; align-items: center; gap: 10px; }
 .ticket-subject { font-size: 18px; color: #fff; margin: 0; font-weight: 600; }
 
-.status-badge {
-  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase;
-}
+.status-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .status-badge.open { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
 .status-badge.answered { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
 .status-badge.closed { background: rgba(255,255,255,0.1); color: #888; }
 
 .messages-area {
-  flex-grow: 1; 
-  overflow-y: auto; 
-  padding-right: 10px;
+  flex-grow: 1; overflow-y: auto; 
+  padding-right: 10px; padding-top: 15px;
   display: flex; flex-direction: column; gap: 15px;
+  min-height: 0;
 }
-
 .messages-area::-webkit-scrollbar { width: 6px; }
 .messages-area::-webkit-scrollbar-track { background: transparent; }
 .messages-area::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
@@ -228,49 +217,23 @@ const isMyMessage = (msg: any) => !msg.is_support
   background: #18181b; border: 1px solid rgba(255,255,255,0.05);
   position: relative;
 }
-
 .my-message .message-bubble {
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  border: none; color: white;
-  border-bottom-right-radius: 4px;
+  border: none; color: white; border-bottom-right-radius: 4px;
 }
-.message-row:not(.my-message) .message-bubble {
-  border-bottom-left-radius: 4px;
-}
+.message-row:not(.my-message) .message-bubble { border-bottom-left-radius: 4px; }
 
-.msg-header { 
-  display: flex; justify-content: space-between; align-items: center; 
-  margin-bottom: 6px; font-size: 11px; opacity: 0.7; gap: 15px; 
-}
+.msg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11px; opacity: 0.7; gap: 15px; }
 .msg-author { font-weight: 700; }
 .msg-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 
-/* Уменьшил отступы инпута */
-.input-area { margin-top: 15px; padding-bottom: 10px; }
-.send-form {
-  display: flex; gap: 10px; background: rgba(255,255,255,0.03);
-  padding: 8px; /* Уменьшил padding */
-  border-radius: 16px; border: 1px solid rgba(255,255,255,0.05);
-  align-items: flex-end;
-}
-.chat-input {
-  flex-grow: 1; background: transparent; border: none; color: white;
-  resize: none; outline: none; padding: 10px; font-family: inherit; font-size: 14px;
-  max-height: 150px; overflow-y: auto;
-}
-.send-btn {
-  width: 40px; height: 40px; border-radius: 12px; background: #3b82f6; border: none;
-  color: white; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; transition: 0.2s; flex-shrink: 0;
-  margin-bottom: 2px;
-}
-.send-btn:hover { background: #2563eb; transform: scale(1.05); }
-.send-btn:disabled { background: #333; cursor: not-allowed; transform: none; }
+.input-area { margin-top: auto; padding-top: 15px; flex-shrink: 0; }
+.send-form { display: flex; gap: 10px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); align-items: flex-end; }
+.chat-input { flex-grow: 1; background: transparent; border: none; color: white; resize: none; outline: none; padding: 10px; font-family: inherit; font-size: 14px; max-height: 150px; overflow-y: auto; }
+.send-btn { width: 40px; height: 40px; border-radius: 12px; background: #3b82f6; border: none; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; flex-shrink: 0; margin-bottom: 2px; }
+.send-btn:hover:not(:disabled) { background: #2563eb; transform: scale(1.05); }
+.send-btn:disabled { background: #333; cursor: not-allowed; }
 .send-btn svg { width: 20px; height: 20px; margin-left: -2px; margin-top: 2px; }
 
-.closed-notice {
-  margin-top: 20px; padding: 15px; text-align: center; 
-  background: rgba(255,50,50,0.1); border: 1px solid rgba(255,50,50,0.2);
-  color: #fca5a5; border-radius: 12px; font-size: 14px;
-}
+.closed-notice { margin-top: 20px; padding: 15px; text-align: center; background: rgba(255,50,50,0.1); border: 1px solid rgba(255,50,50,0.2); color: #fca5a5; border-radius: 12px; font-size: 14px; }
 </style>

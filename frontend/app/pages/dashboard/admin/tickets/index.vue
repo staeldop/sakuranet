@@ -73,10 +73,10 @@ const openTicket = (id: number) => router.push(`/dashboard/admin/tickets/${id}`)
             >
               <td class="id-cell">#{{ ticket.id }}</td>
               <td class="user-cell">
-                <div class="user-avatar">{{ ticket.user.name[0].toUpperCase() }}</div>
+                <div class="user-avatar">{{ ticket.user?.name ? ticket.user.name[0].toUpperCase() : 'U' }}</div>
                 <div class="user-meta">
-                  <span class="u-name">{{ ticket.user.name }}</span>
-                  <span class="u-email">{{ ticket.user.email }}</span>
+                  <span class="u-name">{{ ticket.user?.name || 'Unknown' }}</span>
+                  <span class="u-email">{{ ticket.user?.email || 'No Email' }}</span>
                 </div>
               </td>
               <td class="subject-cell">{{ ticket.subject }}</td>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
-import { $api, useApiFetch } from '~/composables/useApi'
+// ИСПРАВЛЕНО: заменено $api на useApi
+import { useApi, useApiFetch } from '~/composables/useApi'
 
 // Иконки
-import IconSearch from '~/assets/icons/search.svg?component' // Если нет, создай или удали импорт
-import IconEdit from '~/assets/icons/ticket.svg?component' // Временно ticket как edit
+import IconSearch from '~/assets/icons/search.svg?component'
+import IconEdit from '~/assets/icons/ticket.svg?component'
 import IconTrash from '~/assets/icons/trash.svg?component'
 
 definePageMeta({ layout: 'admin' })
@@ -36,7 +37,6 @@ const fetchUsers = async () => {
   errorMessage.value = ''
   
   try {
-    // Используем useApiFetch для GET запроса
     const { data, error } = await useApiFetch<any>('/api/admin/users')
 
     if (error.value) {
@@ -85,7 +85,8 @@ const saveUser = async () => {
   const userId = editingUser.value.id
 
   try {
-    await $api(`/api/admin/users/${userId}`, {
+    // ИСПРАВЛЕНО: заменено $api на useApi
+    await useApi(`/api/admin/users/${userId}`, {
       method: 'PUT',
       body: form.value
     })
@@ -108,19 +109,19 @@ const saveUser = async () => {
 const deleteUser = async (id: number) => {
   if (!confirm('Удалить пользователя?')) return
   try {
-    await $api(`/api/admin/users/${id}`, { method: 'DELETE' })
+    // ИСПРАВЛЕНО: заменено $api на useApi
+    await useApi(`/api/admin/users/${id}`, { method: 'DELETE' })
     users.value = users.value.filter(u => u.id !== id)
   } catch (e) {
     alert('Ошибка при удалении')
   }
 }
 
-// Хелпер для аватара (инициалы)
+// ... остальной код (хелперы и template) без изменений ...
 const getInitials = (name: string) => {
   return name ? name.substring(0, 2).toUpperCase() : '??'
 }
 
-// Цвет аватара на основе ID (чтобы были разные)
 const getAvatarColor = (id: number) => {
   const colors = ['bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-pink-500', 'bg-yellow-500']
   return colors[id % colors.length]

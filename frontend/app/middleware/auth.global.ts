@@ -4,8 +4,13 @@ export default defineNuxtRouteMiddleware((to) => {
   const auth = useAuthStore()
   const token = useCookie('auth_token') // Читаем куку напрямую для надежности
 
-  // Список публичных страниц
-  const publicPages = ['/login', '/register']
+  // ✅ ДОБАВИЛ СЮДА НОВЫЕ СТРАНИЦЫ
+  const publicPages = [
+    '/login', 
+    '/register', 
+    '/forgot-password', 
+    '/reset-password'
+  ]
   
   // Является ли страница публичной?
   const isPublic = publicPages.includes(to.path)
@@ -15,9 +20,9 @@ export default defineNuxtRouteMiddleware((to) => {
     return navigateTo('/login')
   }
 
-  // 2. Если токен ЕСТЬ и мы идем на вход -> в дашборд
+  // 2. Если токен ЕСТЬ и мы идем на вход (или восстановление) -> в дашборд
   if (token.value && isPublic) {
-    return navigateTo('/dashboard') // Или '/'
+    return navigateTo('/dashboard')
   }
 
   // 3. ЗАЩИТА АДМИНКИ

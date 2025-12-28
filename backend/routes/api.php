@@ -26,55 +26,59 @@ Route::get('/ping', function () {
     ]);
 });
 
-// === ПУБЛИЧНЫЕ РОУТЫ ===
+// === ПУБЛИЧНЫЕ РОУТЫ (Доступны всем) ===
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/avatar/{filename}', [AuthController::class, 'getAvatar']);
 Route::get('/products', [ProductController::class, 'index']);
 
-// 🔥 РОУТ ДЛЯ ПОЛУЧЕНИЯ ДЕРЕВА ЯДЕР
+// Сброс пароля (Гостевой доступ)
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+
+// Получение ядер (для магазина)
 Route::get('/eggs/tree', [EggController::class, 'index']);
 
 
-// === ЗАЩИЩЕННЫЕ РОУТЫ ===
+// === ЗАЩИЩЕННЫЕ РОУТЫ (Только для авторизованных) ===
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
 
+    Route::get('/me', [AuthController::class, 'me']);
+
     // ПРОФИЛЬ (Аватарка)
     Route::post('/user/avatar', [AuthController::class, 'updateAvatar']);
     Route::delete('/user/avatar', [AuthController::class, 'deleteAvatar']);
 
     // 🔥 БЕЗОПАСНОСТЬ (Смена пароля и 2FA)
-    Route::put('/user/password', [AuthController::class, 'updatePassword']); // Смена пароля
-
-    // Роуты для 2FA (Google Authenticator)
-    Route::post('/user/two-factor-authentication', [AuthController::class, 'enableTwoFactor']); // Включить (инициализация)
-    Route::delete('/user/two-factor-authentication', [AuthController::class, 'disableTwoFactor']); // Отключить
-    Route::post('/user/confirmed-two-factor-authentication', [AuthController::class, 'confirmTwoFactor']); // Подтвердить кодом
+    Route::put('/user/password', [AuthController::class, 'updatePassword']); 
+    Route::post('/user/send-password-code', [AuthController::class, 'sendPasswordCode']);
     
-    Route::get('/user/two-factor-qr-code', [AuthController::class, 'getTwoFactorQrCode']); // Получить QR
-    Route::get('/user/two-factor-secret-key', [AuthController::class, 'getTwoFactorSecretKey']); // Получить секретный ключ (текстом)
-    Route::get('/user/two-factor-recovery-codes', [AuthController::class, 'getTwoFactorRecoveryCodes']); // Коды восстановления
+    // 2FA (Google Authenticator)
+    Route::post('/user/two-factor-authentication', [AuthController::class, 'enableTwoFactor']);
+    Route::delete('/user/two-factor-authentication', [AuthController::class, 'disableTwoFactor']);
+    Route::post('/user/confirmed-two-factor-authentication', [AuthController::class, 'confirmTwoFactor']);
+    Route::get('/user/two-factor-qr-code', [AuthController::class, 'getTwoFactorQrCode']);
+    Route::get('/user/two-factor-secret-key', [AuthController::class, 'getTwoFactorSecretKey']);
+    Route::get('/user/two-factor-recovery-codes', [AuthController::class, 'getTwoFactorRecoveryCodes']);
 
     // БИЛЛИНГ
     Route::post('/payment/topup', [PaymentController::class, 'topup']);     
     Route::get('/payment/history', [PaymentController::class, 'history']);  
 
-    // УСЛУГИ
+    // УСЛУГИ (Сервера)
     Route::get('/services', [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
     Route::get('/services/{id}', [ServiceController::class, 'show']);
     Route::delete('/services/{id}', [ServiceController::class, 'destroy']);
-    
-    // 🔥 НОВЫЙ РОУТ СМЕНЫ ЯДРА
     Route::post('/services/{id}/change-core', [ServiceController::class, 'changeCore']);
 
-    // ТИКЕТЫ
+    // ТИКЕТЫ (Клиент)
     Route::get('/tickets', [TicketController::class, 'index']);         
-    Route::post('/tickets', [TicketController::class, 'store']);         
+    Route::post('/tickets', [TicketController::class, 'store']);        
     Route::get('/tickets/{id}', [TicketController::class, 'show']);      
     Route::post('/tickets/{id}/reply', [TicketController::class, 'reply']); 
 
@@ -85,26 +89,30 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications', [NotificationController::class, 'destroyAll']);
 
-    Route::get('/me', [AuthController::class, 'me']);
-
-    // === АДМИНКА ===
-    Route::prefix('admin')->group(function () {
+    // === АДМИНКА (ТОЛЬКО ДЛЯ АДМИНОВ) ===
+    // Добавляем middleware 'admin', который мы создали выше
+    Route::middleware(['admin'])->prefix('admin')->group(function () {
+        
+        // Пользователи
         Route::get('/users', [UserController::class, 'index']);
         Route::put('/users/{id}', [UserController::class, 'update']);
         Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
+        // Продукты (Товары)
         Route::post('/products', [ProductController::class, 'store']);      
         Route::put('/products/{id}', [ProductController::class, 'update']); 
         Route::delete('/products/{id}', [ProductController::class, 'destroy']); 
 
+        // Тикеты (Админ)
         Route::get('/tickets', [TicketController::class, 'adminIndex']); 
         Route::get('/tickets/{id}', [TicketController::class, 'adminShow']); 
         Route::put('/tickets/{id}/status', [TicketController::class, 'updateStatus']); 
         Route::post('/tickets/{id}/reply', [TicketController::class, 'adminReply']); 
 
+        // Уведомления (Рассылка)
         Route::post('/notifications/send', [NotificationController::class, 'send']);
 
-        // Если есть Admin\ServerController
+        // Сервера (Управление Pterodactyl)
         Route::get('/servers', [ServerController::class, 'index']);
     });
 });

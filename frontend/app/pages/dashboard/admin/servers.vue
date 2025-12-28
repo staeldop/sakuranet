@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { $api } from '~/composables/useApi' // Импортируем $api вместо useApiFetch
+// ИСПРАВЛЕНО: заменено $api на useApi
+import { useApi } from '~/composables/useApi'
 
 // Иконки
 import IconServer from '~/assets/icons/server.svg?component'
@@ -42,8 +43,8 @@ const fetchServers = async () => {
   debugError.value = ''
   
   try {
-    // ИСПРАВЛЕНИЕ: Используем $api вместо useApiFetch
-    const response: any = await $api('/api/admin/servers', {
+    // ИСПРАВЛЕНО: $api -> useApi
+    const response: any = await useApi('/api/admin/servers', {
       method: 'GET'
     })
 

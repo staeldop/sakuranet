@@ -350,54 +350,105 @@ onMounted(async () => {
         </div>
 
         <div class="right-column">
+          
+          <!-- ОБНОВЛЕННАЯ СОВРЕМЕННАЯ КАРТОЧКА -->
           <div class="summary-card sticky top-5">
             <div class="ambient-glow purple"></div>
-            
+
+            <!-- Шапка: Флаг и Название -->
             <div class="summary-header">
-              <img :src="imgFlagDE" class="flag-icon" />
+              <div class="flag-wrapper">
+                <img :src="imgFlagDE" class="flag-icon" />
+              </div>
               <div class="prod-info">
                 <ClientOnly>
-                    <h3 class="prod-name">{{ product?.name || '...' }}</h3>
-                    <span class="prod-cat">Falkenstein, DE</span>
+                  <h3 class="prod-name">{{ product?.name || 'Загрузка...' }}</h3>
+                  <span class="prod-cat">
+                    <span class="status-dot"></span> Falkenstein, DE
+                  </span>
                 </ClientOnly>
               </div>
             </div>
 
             <ClientOnly>
-                <div class="price-section">
-                <div class="price-val">{{ formatPrice(totalPrice) }}</div>
-                <div class="price-sub">за {{ selectedPeriod }} мес.</div>
+              <!-- Сетка характеристик (Grid) -->
+              <div class="specs-grid">
+                <!-- CPU -->
+                <div class="spec-tile">
+                  <div class="icon-box">
+                    <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><path d="M9 9h6v6H9z"></path><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"></path></svg>
+                  </div>
+                  <div class="spec-data">
+                    <span class="s-val">{{ product?.cpu_limit ? product.cpu_limit + '%' : '-' }}</span>
+                    <span class="s-lbl">vCore</span>
+                  </div>
                 </div>
-            </ClientOnly>
 
-            <div class="divider"></div>
+                <!-- RAM -->
+                <div class="spec-tile">
+                  <div class="icon-box">
+                    <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7v10h20V7H2zm4 4h2v2H6v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"></path></svg>
+                  </div>
+                  <div class="spec-data">
+                    <span class="s-val">{{ product?.memory_mb ? (product.memory_mb / 1024).toFixed(0) + ' GB' : '-' }}</span>
+                    <span class="s-lbl">RAM</span>
+                  </div>
+                </div>
 
-            <ClientOnly>
-                <div class="specs-list">
-                <div class="spec-row">
-                    <span class="label">CPU</span>
-                    <span class="val">{{ product?.cpu_limit ? product.cpu_limit + '%' : '...' }}</span>
+                <!-- Disk -->
+                <div class="spec-tile">
+                  <div class="icon-box">
+                    <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path><circle cx="12" cy="12" r="4"></circle><path d="M12 12h.01"></path></svg>
+                  </div>
+                  <div class="spec-data">
+                    <span class="s-val">{{ product?.disk_mb ? (product.disk_mb / 1024).toFixed(0) + ' GB' : '-' }}</span>
+                    <span class="s-lbl">NVMe</span>
+                  </div>
                 </div>
-                <div class="spec-row">
-                    <span class="label">RAM</span>
-                    <span class="val">{{ product?.memory_mb ? product.memory_mb + ' MB' : '...' }}</span>
+
+                <!-- Port -->
+                <div class="spec-tile">
+                  <div class="icon-box">
+                     <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                  </div>
+                  <div class="spec-data">
+                    <span class="s-val">1 Gbps</span>
+                    <span class="s-lbl">Port</span>
+                  </div>
                 </div>
-                <div class="spec-row">
-                    <span class="label">NVMe Disk</span>
-                    <span class="val">{{ product?.disk_mb ? product.disk_mb + ' MB' : '...' }}</span>
+              </div>
+
+              <!-- Выбор ядра -->
+              <div class="core-selector" :class="{ 'is-selected': selectedEgg }">
+                <div class="cs-icon">
+                  <IconSearch v-if="!selectedEgg" class="cs-svg" />
+                  <svg v-else class="cs-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 0V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-5 0h2.5m13 0H21m-9 0v4"></path></svg>
+                </div>
+                <div class="cs-info">
+                  <span class="cs-label">Ядро сервера</span>
+                  <span class="cs-value">{{ selectedEgg ? selectedEgg.attributes.name : 'Не выбрано' }}</span>
+                </div>
+                <div class="cs-status" v-if="!selectedEgg">!</div>
+              </div>
+
+              <div class="divider-glass"></div>
+
+              <!-- Футер: Цена и кнопка -->
+              <div class="footer-action">
+                <div class="price-container">
+                  <div class="price-big">{{ formatPrice(totalPrice) }}</div>
+                  <div class="price-small">за {{ selectedPeriod }} мес.</div>
                 </div>
                 
-                <div class="selected-core-box" :class="{ 'has-core': selectedEgg }">
-                    <div class="sc-label">Ядро</div>
-                    <div class="sc-val">{{ selectedEgg ? selectedEgg.attributes.name : 'Не выбрано' }}</div>
-                </div>
-                </div>
+                <button @click="handleCheckout" :disabled="isSubmitting || !selectedEgg" class="checkout-btn-modern">
+                  <span v-if="!isSubmitting">Создать</span>
+                  <span v-else class="spinner-sm"></span>
+                </button>
+              </div>
             </ClientOnly>
-
-            <button @click="handleCheckout" :disabled="isSubmitting" class="checkout-btn">
-              {{ isSubmitting ? 'Создание...' : 'Оплатить и создать' }}
-            </button>
           </div>
+          <!-- КОНЕЦ НОВОЙ КАРТОЧКИ -->
+
         </div>
       </div>
     </div>
@@ -439,11 +490,7 @@ onMounted(async () => {
 /* Period (Locked) */
 .periods-locked-wrapper { position: relative; border-radius: 16px; overflow: hidden; }
 .periods-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-
-.disabled-state {
-  opacity: 0.4; filter: grayscale(0.8); pointer-events: none;
-}
-
+.disabled-state { opacity: 0.4; filter: grayscale(0.8); pointer-events: none; }
 .period-card { position: relative; padding: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.2s; }
 .period-card.active { border-color: #3b82f6; background: rgba(59, 130, 246, 0.05); }
 .period-val { font-weight: 500; font-size: 14px; color: #ddd; z-index: 2; }
@@ -470,29 +517,162 @@ onMounted(async () => {
 .period-card.active .ambient-glow { opacity: 0.25; }
 .summary-card .ambient-glow { opacity: 0.15; }
 
-/* Summary */
-.summary-card { position: relative; background: rgba(20, 20, 20, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 30px; overflow: hidden; }
-.summary-header { display: flex; gap: 15px; align-items: center; margin-bottom: 25px; position: relative; z-index: 2; }
-.flag-icon { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; }
-.prod-name { font-size: 20px; font-weight: 700; margin: 0 0 4px 0; color: #fff; }
-.prod-cat { font-size: 12px; color: #888; }
-.price-section { margin-bottom: 25px; position: relative; z-index: 2; }
-.price-val { font-size: 36px; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
-.price-sub { color: #666; font-size: 14px; }
-.divider { height: 1px; background: rgba(255,255,255,0.05); margin-bottom: 25px; }
-.spec-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; position: relative; z-index: 2; }
-.label { color: #666; }
-.val { color: #ddd; font-weight: 500; font-family: monospace; }
-.selected-core-box { margin-top: 20px; padding: 16px; background: rgba(255, 255, 255, 0.03); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); position: relative; z-index: 2; }
-.selected-core-box.has-core { border-color: rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.05); }
-.sc-label { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 4px; }
-.sc-val { color: #fff; font-weight: 600; font-size: 14px; }
-.checkout-btn { width: 100%; padding: 16px; margin-top: 30px; background: #fff; color: #000; font-weight: 700; border-radius: 14px; border: none; cursor: pointer; transition: 0.2s; font-size: 15px; position: relative; z-index: 2; }
-.checkout-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(255,255,255,0.1); }
-.checkout-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.loading-wrapper { height: 60vh; display: flex; align-items: center; justify-content: center; }
-.spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; }
+/* --- СТИЛИ ДЛЯ НОВОЙ КАРТОЧКИ --- */
+.summary-card {
+  position: relative;
+  background: rgba(18, 18, 20, 0.7);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5);
+  border-radius: 24px;
+  padding: 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Хедер */
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  z-index: 2;
+}
+.flag-wrapper {
+  width: 48px; height: 48px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.flag-icon { width: 28px; height: auto; border-radius: 4px; }
+.prod-info { display: flex; flex-direction: column; }
+.prod-name { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.2; margin: 0; }
+.prod-cat { font-size: 13px; color: #888; display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.status-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; display: inline-block;}
+
+/* Сетка характеристик */
+.specs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  position: relative; z-index: 2;
+}
+.spec-tile {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.03);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: 0.3s;
+}
+.spec-tile:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
+
+.icon-box {
+  width: 36px; height: 36px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: #a3a3a3; flex-shrink: 0;
+}
+.spec-svg { width: 18px; height: 18px; }
+
+.spec-data { display: flex; flex-direction: column; overflow: hidden; }
+.s-val { font-size: 14px; font-weight: 600; color: #fff; line-height: 1.1; white-space: nowrap;}
+.s-lbl { font-size: 11px; color: #666; margin-top: 2px; }
+
+/* Блок выбора ядра */
+.core-selector {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px dashed rgba(239, 68, 68, 0.3);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+  transition: 0.3s;
+  cursor: pointer;
+  position: relative; z-index: 2;
+}
+.core-selector.is-selected {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.08), rgba(168, 85, 247, 0.08));
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.cs-icon {
+  width: 40px; height: 40px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  color: #ddd;
+}
+.cs-svg { width: 20px; height: 20px; }
+.cs-info { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+.cs-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #777; margin-bottom: 2px;}
+.cs-value { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-status { 
+  width: 24px; height: 24px; background: #ef4444; color: #fff; border-radius: 50%; 
+  font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center;
+  animation: pulse 2s infinite;
+}
+
+/* Футер: Цена и кнопка */
+.divider-glass { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); margin: 0; width: 100%; }
+
+.footer-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: relative; z-index: 2;
+}
+.price-container { display: flex; flex-direction: column; }
+.price-big {
+  font-size: 28px; font-weight: 800; color: #fff;
+  background: linear-gradient(90deg, #fff, #a5b4fc);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.price-small { font-size: 12px; color: #666; }
+
+.checkout-btn-modern {
+  flex: 1;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  border-radius: 14px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 0 24px;
+  height: 52px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px -6px rgba(99, 102, 241, 0.5);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  display: flex; align-items: center; justify-content: center;
+}
+.checkout-btn-modern:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 12px 25px -8px rgba(99, 102, 241, 0.7);
+}
+.checkout-btn-modern:disabled {
+  background: #333; color: #555; box-shadow: none; cursor: not-allowed;
+}
+
+/* Spinner для кнопки */
+.spinner-sm {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 .list-move, .list-enter-active, .list-leave-active { transition: all 0.4s ease; }

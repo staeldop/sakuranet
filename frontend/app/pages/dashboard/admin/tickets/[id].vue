@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useApiFetch, $api } from '~/composables/useApi'
+// ИСПРАВЛЕНО: Заменили $api на useApi
+import { useApiFetch, useApi } from '~/composables/useApi'
 import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({ layout: 'admin' })
@@ -66,7 +67,8 @@ const sendMessage = async () => {
   }
 
   try {
-    await $api(`/api/admin/tickets/${ticketId}/reply`, {
+    // ИСПРАВЛЕНО: $api -> useApi
+    await useApi(`/api/admin/tickets/${ticketId}/reply`, {
       method: 'POST',
       body: { message: textToSend }
     })
@@ -84,7 +86,8 @@ const sendMessage = async () => {
 const changeStatus = async (newStatus: string) => {
   if (!confirm(`Изменить статус на "${newStatus}"?`)) return
   try {
-    await $api(`/api/admin/tickets/${ticketId}/status`, {
+    // ИСПРАВЛЕНО: $api -> useApi
+    await useApi(`/api/admin/tickets/${ticketId}/status`, {
       method: 'PUT',
       body: { status: newStatus }
     })
@@ -160,6 +163,7 @@ const isSupportMsg = (msg: any) => msg.is_support
     </template>
   </div>
 </template>
+
 <style scoped>
 .admin-chat-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; height: calc(100vh - 40px); max-width: 1400px; margin: 0 auto; }
 .center-msg { grid-column: 1 / -1; text-align: center; padding: 50px; color: #888; }

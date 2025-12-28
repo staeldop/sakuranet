@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useApiFetch, $api } from '~/composables/useApi' 
+import { useApiFetch, useApi } from '~/composables/useApi' 
 
 definePageMeta({
   layout: 'dashboard'
@@ -16,7 +16,7 @@ type TicketPriority = 'low' | 'medium' | 'high'
 interface Ticket {
   id: number
   subject: string
-  priority: TicketPriority // Используем priority
+  priority: TicketPriority
   status: TicketStatus
   lastUpdate: string
   preview: string
@@ -32,7 +32,6 @@ const currentTab = ref<'all' | 'open' | 'closed'>('all')
 const filteredTickets = computed(() => {
   let sorted = tickets.value
   
-  // Сортировка: Сначала High, потом Medium, потом Low
   const priorityWeight = { high: 3, medium: 2, low: 1 }
   sorted = [...sorted].sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority])
 
@@ -59,7 +58,7 @@ const createTicket = async () => {
   isSubmitting.value = true
   
   try {
-    await $api('/api/tickets', {
+    await useApi('/api/tickets', {
       method: 'POST',
       body: newTicketForm.value
     })
@@ -88,7 +87,6 @@ const formatDate = (iso: string) => {
   } catch (e) { return iso }
 }
 
-// Конфигурация приоритетов
 const priorityConfig: Record<TicketPriority, { label: string, color: string, bg: string }> = {
   low:    { label: 'Низкий',    color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' }, 
   medium: { label: 'Средний',   color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' }, 
@@ -101,7 +99,6 @@ const getStatusIcon = (status: TicketStatus) => {
   return 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
 }
 
-// --- ЛОГИКА СЕЛЕКТОРА ---
 const isPriorityOpen = ref(false)
 const togglePriority = () => isPriorityOpen.value = !isPriorityOpen.value
 const selectPriority = (val: TicketPriority) => {
@@ -117,7 +114,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
   <div class="tickets-page">
     <div class="content-wrapper">
       
-      <!-- ЗАГОЛОВОК -->
       <div class="header-row">
         <h1 class="page-title">Поддержка</h1>
         <div class="actions">
@@ -127,7 +123,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
         </div>
       </div>
 
-      <!-- ВКЛАДКИ -->
       <div class="inline-tabs">
         <button 
           v-for="tab in ['all', 'open', 'closed']" 
@@ -140,7 +135,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
         </button>
       </div>
 
-      <!-- СПИСОК -->
       <div class="list-container">
         <div v-if="pending" class="loading-state">
           <div class="skeleton-card" v-for="i in 3" :key="i"></div>
@@ -155,7 +149,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
             @click="openTicket(ticket.id)"
             :style="{ '--p-color': priorityConfig[ticket.priority].color }" 
           >
-            <!-- Свечение и бордер -->
             <div class="priority-border"></div>
             <div class="ambient-glow"></div>
 
@@ -193,14 +186,22 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
         </TransitionGroup>
 
         <div v-else class="empty-placeholder">
-          <div class="empty-circle">📂</div>
-          <h3>Пусто</h3>
-          <p>Тикетов нет</p>
+          <div class="empty-icon-wrapper">
+            <svg viewBox="0 0 30.074 30.075" fill="none" xmlns="http://www.w3.org/2000/svg" class="empty-svg">
+               <path d="M1.606,13.595l1.91-0.948L3.952,1.641L2.291,1.575C1.412,1.54,0.672,2.223,0.638,3.102l-0.352,8.869 c-0.017,0.422,0.135,0.833,0.421,1.143C0.946,13.372,1.264,13.536,1.606,13.595z" fill="currentColor"></path> 
+               <path d="M10.387,9.051L8.628,7.197c-0.069-0.073-0.091-0.18-0.056-0.275C8.607,6.827,8.692,6.76,8.793,6.75l2.54-0.268 c0.087-0.009,0.164-0.061,0.205-0.137L12.761,4.1c0.049-0.089,0.144-0.143,0.244-0.139c0.101,0.004,0.19,0.065,0.232,0.157 l1.039,2.335c0.036,0.08,0.107,0.137,0.194,0.153l0.891,0.166l4.827-2.394l0.083-2.091L5.895,1.719l-0.394,9.946l4.95-2.456 C10.444,9.151,10.427,9.095,10.387,9.051z" fill="currentColor"></path> 
+               <path d="M23.838,2.975c0.479,0,0.938,0.099,1.357,0.273c-0.262-0.468-0.748-0.796-1.323-0.819l-1.66-0.066l-0.041,1.03 l0.098-0.048C22.753,3.104,23.297,2.975,23.838,2.975z" fill="currentColor"></path> 
+               <path d="M0.884,16.123c-0.378,0.188-0.666,0.52-0.801,0.917c-0.135,0.399-0.104,0.837,0.082,1.215l4.646,9.361 C5.087,28.176,5.652,28.5,6.237,28.5c0.238,0,0.479-0.054,0.706-0.167l1.984-0.982L2.868,15.14L0.884,16.123z" fill="currentColor"></path> 
+               <path d="M29.909,15.165l-4.646-9.362c-0.275-0.56-0.842-0.884-1.427-0.884c-0.236,0-0.479,0.053-0.706,0.167L21.147,6.07 l6.06,12.211l1.983-0.983c0.378-0.188,0.667-0.519,0.801-0.917C30.126,15.981,30.097,15.543,29.909,15.165z" fill="currentColor"></path> 
+               <path d="M4.608,14.276l6.06,12.21l14.799-7.342l-6.06-12.212L4.608,14.276z M19.854,19.577c-0.047,0.09-0.142,0.146-0.24,0.145 l-2.979-0.069c-0.087-0.002-0.169,0.039-0.221,0.109l-1.746,2.412c-0.06,0.081-0.16,0.122-0.26,0.104 c-0.1-0.017-0.182-0.088-0.211-0.187l-0.853-2.854c-0.024-0.083-0.089-0.149-0.172-0.176l-2.834-0.915 c-0.096-0.031-0.167-0.114-0.182-0.214c-0.015-0.102,0.029-0.2,0.112-0.258l2.448-1.692c0.072-0.049,0.115-0.131,0.115-0.219 l-0.007-2.978c0-0.101,0.057-0.194,0.148-0.239c0.09-0.045,0.198-0.035,0.278,0.026l2.368,1.807 c0.069,0.053,0.16,0.069,0.243,0.041l2.832-0.926c0.096-0.031,0.2-0.005,0.271,0.067c0.07,0.072,0.095,0.179,0.062,0.274 l-1.032,2.94l1.837,2.517C19.892,19.378,19.899,19.488,19.854,19.577z" fill="currentColor"></path>
+            </svg>
+          </div>
+          <h3>Список пуст</h3>
+          <p>У вас еще нет созданных обращений</p>
         </div>
       </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО -->
     <Transition name="fade">
       <div v-if="isModalOpen" class="modal-backdrop" @click.self="closeModal">
         <div class="modal-window">
@@ -268,7 +269,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 </template>
 
 <style scoped>
-/* --- BASE LAYOUT (Как в уведомлениях) --- */
 .tickets-page { width: 100%; max-width: 850px; padding-bottom: 80px; }
 .list-container { position: relative; margin-top: 20px; }
 
@@ -283,7 +283,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 .text-btn { background: none; border: none; color: #666; font-size: 14px; cursor: pointer; padding: 5px 10px; transition: 0.2s; }
 .text-btn:hover { color: #fff; }
 
-/* --- TICKET CARD (Стиль уведомлений) --- */
 .ticket-card {
   position: relative;
   display: flex; align-items: center; gap: 16px;
@@ -304,7 +303,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
   transform: translateY(-1px);
 }
 
-/* Приоритет слева */
 .priority-border {
   position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
   background: var(--p-color); opacity: 0.7; box-shadow: 2px 0 15px var(--p-color);
@@ -317,7 +315,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 }
 .ticket-card:hover .ambient-glow { opacity: 0.25; }
 
-/* Иконки */
 .icon-box {
   width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -329,7 +326,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 .ticket-card.answered .icon-box { color: #22c55e; background: rgba(34, 197, 94, 0.1); }
 .ticket-card.open .icon-box { color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
 
-/* Контент */
 .card-content { flex-grow: 1; z-index: 2; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
 .top-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .card-title { color: #fff; font-size: 14px; font-weight: 500; }
@@ -343,7 +339,6 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 .meta-row { margin-top: 4px; }
 .card-date { color: #555; font-size: 12px; white-space: nowrap; }
 
-/* Стрелка действия справа */
 .action-btn {
   width: 30px; height: 30px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -351,8 +346,36 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 }
 .ticket-card:hover .action-btn { color: rgba(255, 255, 255, 0.4); transform: translateX(4px); }
 
+/* --- ПУСТОЕ СОСТОЯНИЕ (EMPTY STATE) --- */
+.empty-placeholder {
+  text-align: center;
+  padding: 80px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.empty-icon-wrapper {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: #444;
+}
+.empty-svg {
+  width: 38px;
+  height: 38px;
+  opacity: 0.6;
+}
+.empty-placeholder h3 { color: #fff; font-size: 18px; margin: 0 0 8px 0; font-weight: 600; }
+.empty-placeholder p { font-size: 14px; color: #555; }
 
-/* --- MODAL & FORM --- */
+/* МОДАЛКА */
 .modal-backdrop {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
@@ -376,11 +399,10 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 .glass-input:focus { border-color: #3b82f6; background: rgba(59, 130, 246, 0.05); }
 .area { resize: vertical; min-height: 100px; font-family: inherit; }
 
-/* SELECTOR */
 .priority-select { position: relative; }
 .select-trigger { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
 .selected-val { display: flex; align-items: center; gap: 10px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px inherit; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; }
 
 .select-options {
   position: absolute; top: calc(100% + 6px); left: 0; right: 0;
@@ -393,25 +415,16 @@ const currentPriorityColor = computed(() => priorityConfig[newTicketForm.value.p
 }
 .select-options li:hover { background: rgba(255,255,255,0.05); color: #fff; }
 .select-options li.active { background: rgba(255,255,255,0.08); color: #fff; }
-.check-mark { margin-left: auto; color: #3b82f6; }
-
-.slide-down-enter-active, .slide-down-leave-active { transition: all 0.2s ease; }
-.slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-10px); }
 
 .submit-btn {
   width: 100%; background: #fff; color: #000; font-weight: 700;
   padding: 14px; border: none; border-radius: 12px; cursor: pointer; margin-top: 5px; transition: 0.2s;
 }
 .submit-btn:hover:not(:disabled) { background: #e0e0e0; }
-.submit-btn:disabled { background: #444; color: #888; cursor: not-allowed; }
 
-/* ANIMATIONS */
 .list-move, .list-enter-active, .list-leave-active { transition: all 0.4s ease; }
 .list-leave-to { opacity: 0; transform: translateX(30px); }
 .list-enter-from { opacity: 0; transform: translateX(-30px); }
-.loading-state { display: flex; flex-direction: column; gap: 12px; }
-.skeleton-card { height: 86px; background: rgba(255,255,255,0.03); border-radius: 18px; animation: pulse 1.5s infinite; }
+.skeleton-card { height: 86px; background: rgba(255,255,255,0.03); border-radius: 18px; animation: pulse 1.5s infinite; margin-bottom: 10px; }
 @keyframes pulse { 50% { opacity: 0.5; } }
-.empty-placeholder { text-align: center; padding: 50px 0; color: #555; }
-.empty-circle { font-size: 28px; margin-bottom: 8px; opacity: 0.4; filter: grayscale(1); }
 </style>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { $api } from '~/composables/useApi'
+// ИСПРАВЛЕНО: заменено $api на useApi
+import { useApi } from '~/composables/useApi'
 
 definePageMeta({
   layout: 'admin'
 })
 
-// --- ЛОГИКА (Осталась прежней) ---
+// --- ЛОГИКА ---
 const form = ref({
   target: 'all' as 'all' | 'single',
   user_id: '',
@@ -37,7 +38,8 @@ const sendNotification = async () => {
   isSubmitting.value = true
 
   try {
-    await $api('/api/admin/notifications/send', {
+    // ИСПРАВЛЕНО: $api -> useApi
+    await useApi('/api/admin/notifications/send', {
       method: 'POST',
       body: {
         user_id: form.value.target === 'single' ? form.value.user_id : null,

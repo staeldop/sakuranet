@@ -3,12 +3,14 @@ import { ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '~/stores/auth'
 
+// ИМПОРТИРУЕМ ВЕРХНЮЮ ПАНЕЛЬ
+import TheHeader from '~/components/TheHeader.vue'
+
 // ИКОНКИ
 import IconHome from '~/assets/icons/home.svg?component'
 import IconBell from '~/assets/icons/bell.svg?component'
 import IconWallet from '~/assets/icons/wallet.svg?component'
 import IconBox from '~/assets/icons/box.svg?component'
-import IconServer from '~/assets/icons/server.svg?component' // Если используется для серверов
 import IconGamepad from '~/assets/icons/gamepad.svg?component'
 import IconBalance from '~/assets/icons/balance.svg?component'
 import IconLogout from '~/assets/icons/logout.svg?component'
@@ -81,6 +83,8 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
 <template>
   <div class="layout-container">
     
+    <TheHeader />
+
     <input 
       type="file" 
       ref="fileInput" 
@@ -216,9 +220,9 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
 .hidden { display: none; }
 
 .layout-container {
-  --global-top-padding: 155px; 
+  --global-top-padding: 100px; 
   --sb-width: 260px; 
-  --sb-padding-top: 155px; 
+  --sb-padding-top: 100px; 
   --sb-padding-left: 120px; 
   --sb-padding-right: 30px; 
   --avatar-size: 64px; 
@@ -226,7 +230,7 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
   --profile-gap: 16px; 
   --profile-bottom: 20px; 
   --bg-color: #000000; 
-  --sb-bg: rgba(255,255,255, 0.02);
+  --sb-bg: #000000; 
   --menu-icon-size: 20px; 
 
   display: flex; 
@@ -342,7 +346,6 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
 .nav-item:active { transform: scale(0.98); transition: transform 0.1s ease-out; }
 .router-link-active:hover { background-color: transparent; }
 
-/* 🔥 НОВЫЕ СТИЛИ ДЛЯ ОТСТУПОВ И ЛИНИИ */
 .mt-4 { margin-top: 24px; }
 .section-title { 
   font-size: 11px; color: #555; font-weight: 700; 

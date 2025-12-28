@@ -55,14 +55,8 @@
               @click="showPassword = !showPassword"
               tabindex="-1"
             >
-              <svg v-if="!showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                <line x1="1" y1="1" x2="23" y2="23"></line>
-              </svg>
-              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
+              <svg v-if="!showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
             </button>
           </div>
         </label>
@@ -71,7 +65,7 @@
           <span class="field-label">Повторите пароль</span>
           <input
             v-model="form.password_confirmation"
-            type="password"
+            :type="showPassword ? 'text' : 'password'"
             placeholder="Повторите пароль"
             autocomplete="new-password"
             required
@@ -111,11 +105,15 @@
 import { reactive, ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 
+definePageMeta({
+  layout: 'empty'
+})
+
 // Подключаем Store и Config
 const auth = useAuthStore()
 const config = useRuntimeConfig()
 
-// Форма (Reactive, чтобы работало с v-model)
+// Форма
 const form = reactive({
   name: '',
   email: '',
@@ -130,7 +128,6 @@ const debugInfo = ref<string | null>(null)
 const showPassword = ref(false)
 
 const onSubmit = async () => {
-  // 1. Проверка паролей на клиенте
   if (form.password !== form.password_confirmation) {
     errorMessage.value = "Пароли не совпадают"
     return
@@ -141,8 +138,6 @@ const onSubmit = async () => {
   pending.value = true
 
   try {
-    // 2. Отправляем запрос через $fetch (а не useApiFetch!)
-    // $fetch — это правильный способ делать запросы внутри функций
     const response: any = await $fetch("/api/register", {
       baseURL: config.public.apiBase,
       method: "POST",
@@ -152,18 +147,11 @@ const onSubmit = async () => {
       }
     })
 
-    // 3. Успех: сервер вернул токен
     if (response.token) {
-      // Сохраняем токен в Pinia (он сам положит в Cookie)
       auth.token = response.token
-      
-      // Загружаем пользователя
       await auth.fetchUser()
-      
-      // Переходим в админку
       await navigateTo("/dashboard")
     } else {
-      // Редкий кейс: регистрация прошла, но токена нет -> на логин
       await navigateTo("/login")
     }
 
@@ -171,7 +159,6 @@ const onSubmit = async () => {
     console.error("Auth Error:", error)
     const errData = error.response?._data
 
-    // Обработка ошибок (422 Validation, 500 Server, etc.)
     if (errData?.errors) {
       const firstKey = Object.keys(errData.errors)[0]
       errorMessage.value = errData.errors[firstKey][0]
@@ -187,6 +174,14 @@ const onSubmit = async () => {
 }
 </script>
 
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #09090b;
+}
+</style>
+
 <style scoped>
 /* === LAYOUT === */
 .auth-shell {
@@ -199,6 +194,7 @@ const onSubmit = async () => {
   justify-content: center;
   overflow: hidden;
   box-sizing: border-box;
+  padding: 16px; /* Важный отступ для мобилок */
 }
 
 /* === BACKGROUND GLOWS === */
@@ -251,7 +247,7 @@ const onSubmit = async () => {
   width: 100%;
   max-width: 520px;
   padding: 26px 28px 22px;
-  margin: 0 16px;
+  margin: 0;
   border-radius: 26px;
   background: rgba(8, 8, 8, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -264,6 +260,7 @@ const onSubmit = async () => {
   transform: translateY(12px) scale(0.985);
   opacity: 0;
   animation: cardEnter 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  z-index: 10;
 }
 
 /* === HEADER === */
@@ -287,11 +284,7 @@ const onSubmit = async () => {
   letter-spacing: 0.23em;
   text-transform: uppercase;
   opacity: 0.9;
-  transition:
-    transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
-    box-shadow 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
-    border-color 0.5s cubic-bezier(0.22, 0.61, 0.36, 1),
-    background 0.35s ease;
+  transition: all 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .badge-dot,
 .badge-text {
@@ -365,10 +358,7 @@ const onSubmit = async () => {
   color: #f5f5f5;
   font-size: 13px;
   outline: none;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: all 0.2s ease;
 }
 .field input::placeholder {
   opacity: 0.42;
@@ -404,6 +394,7 @@ const onSubmit = async () => {
 .error-text {
   font-size: 12px;
   color: #ff7b7b;
+  text-align: center;
 }
 .debug-details {
   margin-top: 5px;
@@ -415,35 +406,25 @@ const onSubmit = async () => {
   white-space: pre-wrap;
 }
 
-.auth-footer {
-  margin-top: 18px;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  opacity: 0.6;
-}
-.hint-value {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-}
-
-/* === SEPARATOR === */
+/* === SEPARATOR (ОБНОВЛЕННЫЙ) === */
 .separator {
   display: flex;
   align-items: center;
   text-align: center;
-  margin: 0; 
-  color: rgba(255,255,255,0.2);
+  margin: 4px 0;
+  color: rgba(255,255,255,0.4); /* Ярче */
   font-size: 11px;
+  text-transform: uppercase;
 }
 .separator::before,
 .separator::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 .separator span {
   padding: 0 10px;
+  margin-top: -1px;
 }
 
 /* === BUTTONS === */
@@ -456,13 +437,7 @@ const onSubmit = async () => {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition:
-    transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1),
-    box-shadow 0.4s cubic-bezier(0.22, 0.61, 0.36, 1),
-    background 0.28s ease,
-    opacity 0.22s ease,
-    border-color 0.22s ease,
-    color 0.28s ease;
+  transition: all 0.3s ease;
 }
 
 .primary-btn {
@@ -470,53 +445,37 @@ const onSubmit = async () => {
   background: #ffffff;
   color: #000000; 
   border-color: rgba(255, 255, 255, 0);
-  box-shadow:
-    0 10px 30px rgba(255, 255, 255, 0.1),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
-  position: relative;
-  overflow: hidden;
-  transform: translateY(-2px) scale(1.01);
-}
-.primary-btn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0);
-  transition: background 0.2s ease;
+  box-shadow: 0 10px 30px rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
 }
 .primary-btn:hover:not(:disabled) {
-  transform: translateY(1px) scale(0.99);
-  box-shadow:
-    0 5px 15px rgba(255, 255, 255, 0.15),
-    0 0 0 1px rgba(255, 255, 255, 0.2);
+  transform: translateY(0px);
+  box-shadow: 0 5px 15px rgba(255, 255, 255, 0.2);
   background: #f2f2f2; 
 }
 .primary-btn:active:not(:disabled) {
-  transform: translateY(2px) scale(0.985);
-  background: #e6e6e6;
+  transform: translateY(1px);
 }
 .primary-btn:disabled {
   opacity: 0.6;
   cursor: default;
+  transform: none;
 }
 
 .ghost-btn {
-  margin-top: 0; 
   background: transparent;
   color: #f0f0f0;
   border-color: rgba(255, 255, 255, 0.26);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.85);
   transform: translateY(-1px);
 }
 .ghost-btn:hover {
-  background: rgba(255, 255, 255, 0.03);
-  transform: translateY(1px) scale(0.99);
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.75);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(0px);
 }
 .ghost-btn:active {
-  background: rgba(255, 255, 255, 0.05);
-  transform: translateY(2px) scale(0.985);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(1px);
 }
 
 /* === ANIMATIONS === */

@@ -10,7 +10,6 @@ const services = ref<any[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
 
-// URL панели
 const PTERODACTYL_URL = 'https://panel.sakuranet.space' 
 
 const formatDate = (dateStr: string) => {
@@ -23,12 +22,8 @@ const fetchServices = async () => {
   errorMessage.value = ''
   try {
     const { data, error } = await useApiFetch<any[]>('/api/services', { server: false })
-    
     if (error.value) throw error.value
-    
-    if (data.value) {
-      services.value = data.value
-    }
+    if (data.value) services.value = data.value
   } catch (e: any) {
     console.error('Ошибка загрузки:', e)
     errorMessage.value = 'Не удалось загрузить список услуг. Попробуйте позже.'
@@ -62,20 +57,21 @@ onMounted(fetchServices)
       </div>
 
       <div v-else-if="services.length === 0" class="empty-state">
-        <div class="empty-icon">📦</div>
+        <div class="empty-icon-wrapper">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="empty-svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M12.4856 1.12584C12.1836 0.958052 11.8164 0.958052 11.5144 1.12584L2.51436 6.12584L2.5073 6.13784L2.49287 6.13802C2.18749 6.3177 2 6.64568 2 7V16.9999C2 17.3631 2.19689 17.6977 2.51436 17.874L11.5022 22.8673C11.8059 23.0416 12.1791 23.0445 12.4856 22.8742L21.4856 17.8742C21.8031 17.6978 22 17.3632 22 17V7C22 6.64568 21.8125 6.31781 21.5071 6.13813C21.4996 6.13372 21.4921 6.12942 21.4845 6.12522L12.4856 1.12584ZM5.05923 6.99995L12.0001 10.856L14.4855 9.47519L7.74296 5.50898L5.05923 6.99995ZM16.5142 8.34816L18.9409 7L12 3.14396L9.77162 4.38195L16.5142 8.34816ZM4 16.4115V8.69951L11 12.5884V20.3004L4 16.4115ZM13 20.3005V12.5884L20 8.69951V16.4116L13 20.3005Z" fill="currentColor" />
+          </svg>
+        </div>
         <h3>У вас пока нет услуг</h3>
-        <NuxtLink to="/dashboard/order" class="cosmic-btn compact">
+        <p class="empty-subtext">Закажите свой первый сервер, чтобы начать работу.</p>
+        <NuxtLink to="/dashboard/order" class="cosmic-btn compact mt-4">
           Заказать сервер
           <div class="btn-glow"></div>
         </NuxtLink>
       </div>
 
       <div v-else class="grid-layout">
-        <div 
-          v-for="srv in services" 
-          :key="srv.id" 
-          class="glass-card"
-        >
+        <div v-for="srv in services" :key="srv.id" class="glass-card">
           <div class="card-top">
             <div class="icon-wrapper">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-svg">
@@ -131,7 +127,6 @@ onMounted(fetchServices)
 </template>
 
 <style scoped>
-/* (Стили те же, что и были, они хорошие) */
 .page-wrapper { position: relative; width: 100%; max-width: 1200px; margin: 0; padding-bottom: 80px; }
 .content-wrapper { position: relative; z-index: 10; }
 .page-header { margin-bottom: 30px; }
@@ -162,12 +157,42 @@ onMounted(fetchServices)
 .cosmic-btn.secondary:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.2); color: white; box-shadow: none; }
 .btn-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.4), transparent); transform: translateX(-100%); transition: transform 0.5s ease; opacity: 0.5; pointer-events: none; }
 .cosmic-btn:hover .btn-glow { transform: translateX(100%); }
-.icon-svg { width: 24px; height: 24px; }
-.icon-svg.sm { width: 16px; height: 16px; opacity: 0.7; }
-.empty-state { min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(12, 12, 12, 0.5); border: 1px dashed rgba(255,255,255,0.1); border-radius: 20px; }
-.empty-icon { font-size: 40px; margin-bottom: 15px; opacity: 0.7; }
-.empty-state h3 { color: #888; font-size: 16px; margin-bottom: 20px; font-weight: 500; }
-.cosmic-btn.compact { display: inline-flex; width: auto; padding: 10px 24px; text-decoration: none; }
+
+/* === НОВЫЕ СТИЛИ ПУСТОГО СОСТОЯНИЯ === */
+.empty-state {
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  text-align: center;
+  padding: 40px;
+}
+.empty-icon-wrapper {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #444;
+}
+.empty-svg {
+  width: 38px;
+  height: 38px;
+  opacity: 0.8;
+}
+.empty-state h3 { color: #fff; font-size: 18px; margin: 0 0 8px 0; font-weight: 600; }
+.empty-subtext { font-size: 14px; color: #666; max-width: 300px; margin-bottom: 10px; }
+.mt-4 { margin-top: 16px; }
+
+.cosmic-btn.compact { display: inline-flex; width: auto; padding: 12px 32px; text-decoration: none; }
 .error-state { text-align: center; padding: 40px; }
 .skeleton { height: 220px; background: linear-gradient(90deg, rgba(255,255,255,0.02) 25%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 75%); background-size: 200% 100%; animation: loading 1.5s infinite; }
 @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
