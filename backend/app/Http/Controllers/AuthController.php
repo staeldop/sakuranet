@@ -8,7 +8,13 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth; // <-- Добавил
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
+use PragmaRX\Google2FA\Google2FA;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 
 class AuthController extends Controller
 {
@@ -37,55 +43,171 @@ class AuthController extends Controller
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            // Если валидация не пройдена, Laravel автоматически вернет 422
             throw $e; 
         } catch (\Exception $e) {
             Log::error('Ошибка регистрации: ' . $e->getMessage());
-            return response()->json([
-                'message' => 'Ошибка сервера: ' . $e->getMessage(),
-            ], 500);
+            return response()->json(['message' => 'Ошибка сервера: ' . $e->getMessage()], 500);
         }
     }
 
-    // === ЛОГИН (ИСПРАВЛЕН) ===
+    // === ЛОГИН ===
     public function login(Request $request)
     {
-        // 1. Валидация
         $validated = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
         ]);
 
-        // 2. Используем стандартный Auth::attempt
         if (!Auth::attempt($validated)) {
-            // Если аутентификация не прошла
-            return response()->json([
-                'message' => 'Неверный email или пароль. (Код 401)',
-            ], 401); // Возвращаем 401 - Unauthorized
+            return response()->json(['message' => 'Неверный email или пароль.'], 401);
         }
 
-        // 3. Успешный вход
         $user = $request->user();
         $token = $user->createToken('frontend')->plainTextToken;
 
-        return response()->json([
-            'token' => $token,
-            'user' => $user,
-        ], 200);
+        return response()->json(['token' => $token, 'user' => $user], 200);
     }
-    // ... остальной код контроллера ...
-    // ...
+
     public function me(Request $request)
     {
         return $request->user();
     }
 
-    public function updateAvatar(Request $request)
+    // === 🔥 СМЕНА ПАРОЛЯ ===
+    public function updatePassword(Request $request)
     {
-        $request->validate([
-            'avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+        $validated = $request->validate([
+            'current_password' => ['required', 'current_password'],
+            'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+        $request->user()->update([
+            'password' => Hash::make($validated['password']),
+        ]);
+
+        return response()->json(['message' => 'Пароль успешно изменен']);
+    }
+
+    // === 🔥 2FA ЛОГИКА ===
+
+    public function enableTwoFactor(Request $request)
+    {
+        $user = $request->user();
+        $google2fa = new Google2FA();
+        $secret = $google2fa->generateSecretKey();
+        
+        $recoveryCodes = [];
+        for ($i = 0; $i < 8; $i++) {
+            $recoveryCodes[] = Str::random(10) . '-' . Str::random(10);
+        }
+
+        $user->forceFill([
+            'two_factor_secret' => encrypt($secret),
+            'two_factor_recovery_codes' => encrypt(json_encode($recoveryCodes)),
+            'two_factor_confirmed_at' => null,
+        ])->save();
+
+        return response()->json(['message' => '2FA инициализирована']);
+    }
+
+    // 🔥 ИСПРАВЛЕННЫЙ МЕТОД (ГЕНЕРАЦИЯ SVG ВРУЧНУЮ)
+    public function getTwoFactorQrCode(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user->two_factor_secret) {
+            return response()->json(['message' => '2FA не включена'], 400);
+        }
+
+        $google2fa = new Google2FA();
+        $secret = decrypt($user->two_factor_secret);
+
+        // 1. Получаем ссылку-строку для приложения
+        $qrCodeUrl = $google2fa->getQRCodeUrl(
+            config('app.name'),
+            $user->email,
+            $secret
+        );
+
+        // 2. Генерируем SVG картинку через BaconQrCode
+        $renderer = new ImageRenderer(
+            new RendererStyle(200),
+            new SvgImageBackEnd()
+        );
+        $writer = new Writer($renderer);
+        $svg = $writer->writeString($qrCodeUrl);
+
+        return response()->json(['svg' => $svg]);
+    }
+
+    public function getTwoFactorSecretKey(Request $request)
+    {
+        $user = $request->user();
+        if (!$user->two_factor_secret) return response()->json(['message' => '2FA не включена'], 400);
+
+        return response()->json(['secretKey' => decrypt($user->two_factor_secret)]);
+    }
+
+    public function confirmTwoFactor(Request $request)
+    {
+        $request->validate(['code' => 'required|string']);
+        $user = $request->user();
+        if (!$user->two_factor_secret) return response()->json(['message' => '2FA не инициализирована'], 400);
+
+        $google2fa = new Google2FA();
+        $secret = decrypt($user->two_factor_secret);
+
+        if ($google2fa->verifyKey($secret, $request->code)) {
+            $user->forceFill(['two_factor_confirmed_at' => now()])->save();
+            return response()->json(['message' => '2FA успешно активирована']);
+        }
+
+        return response()->json(['message' => 'Неверный код'], 422);
+    }
+
+    // 🔥 ОБНОВЛЕННЫЙ МЕТОД: Требует код для отключения
+    public function disableTwoFactor(Request $request)
+    {
+        $request->validate([
+            'code' => ['required', 'string'],
+        ]);
+
+        $user = $request->user();
+
+        if (!$user->two_factor_secret) {
+            return response()->json(['message' => '2FA уже выключена'], 400);
+        }
+
+        // Проверяем код перед отключением
+        $google2fa = new Google2FA();
+        $secret = decrypt($user->two_factor_secret);
+
+        $valid = $google2fa->verifyKey($secret, $request->code);
+
+        if (!$valid) {
+            return response()->json(['message' => 'Неверный код подтверждения'], 422);
+        }
+
+        $request->user()->forceFill([
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+        ])->save();
+
+        return response()->json(['message' => '2FA успешно отключена']);
+    }
+
+    public function getTwoFactorRecoveryCodes(Request $request)
+    {
+        $user = $request->user();
+        if (!$user->two_factor_recovery_codes) return response()->json([]);
+        return response()->json(json_decode(decrypt($user->two_factor_recovery_codes), true));
+    }
+
+    // === АВАТАРКИ ===
+    public function updateAvatar(Request $request)
+    {
+        $request->validate(['avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048']);
         $user = $request->user();
         $disk = 'local'; 
         $folder = 'public/avatars';
@@ -95,68 +217,40 @@ class AuthController extends Controller
                 if ($user->avatar) {
                     $oldFilename = basename($user->avatar);
                     $oldPath = $folder . '/' . $oldFilename;
-                    if (Storage::disk($disk)->exists($oldPath)) {
-                        Storage::disk($disk)->delete($oldPath);
-                    }
+                    if (Storage::disk($disk)->exists($oldPath)) Storage::disk($disk)->delete($oldPath);
                 }
-
                 $path = $request->file('avatar')->store($folder, $disk);
-                
-                $filename = basename($path);
-                $url = url("/api/avatar/{$filename}");
-
+                $url = url("/api/avatar/" . basename($path));
                 $user->avatar = $url; 
                 $user->save();
-
-                return response()->json([
-                    'message' => 'Аватар успешно обновлен',
-                    'avatar_url' => $url,
-                    'user' => $user
-                ]);
+                return response()->json(['message' => 'Обновлено', 'avatar_url' => $url, 'user' => $user]);
             }
         } catch (\Exception $e) {
-            Log::error('Ошибка загрузки аватара: ' . $e->getMessage());
-            return response()->json(['message' => 'Не удалось сохранить файл'], 500);
+            Log::error('Avatar error: ' . $e->getMessage());
+            return response()->json(['message' => 'Ошибка сохранения'], 500);
         }
-
-        return response()->json(['message' => 'Файл не был загружен'], 400);
+        return response()->json(['message' => 'Файл не загружен'], 400);
     }
 
     public function deleteAvatar(Request $request)
     {
         $user = $request->user();
-        $disk = 'local';
         $folder = 'public/avatars';
-
         if ($user->avatar) {
             $filename = basename($user->avatar);
-            $path = $folder . '/' . $filename;
-
-            if (Storage::disk($disk)->exists($path)) {
-                Storage::disk($disk)->delete($path);
+            if (Storage::disk('local')->exists($folder . '/' . $filename)) {
+                Storage::disk('local')->delete($folder . '/' . $filename);
             }
-
             $user->avatar = null;
             $user->save();
         }
-
-        return response()->json([
-            'message' => 'Аватар удален',
-            'user' => $user
-        ]);
+        return response()->json(['message' => 'Удалено', 'user' => $user]);
     }
 
     public function getAvatar($filename)
     {
-        $disk = 'local';
         $path = 'public/avatars/' . $filename;
-
-        if (!Storage::disk($disk)->exists($path)) {
-            abort(404);
-        }
-
-        $absolutePath = Storage::disk($disk)->path($path);
-
-        return response()->file($absolutePath);
+        if (!Storage::disk('local')->exists($path)) abort(404);
+        return response()->file(Storage::disk('local')->path($path));
     }
 }

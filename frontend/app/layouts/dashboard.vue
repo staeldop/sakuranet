@@ -8,14 +8,14 @@ import IconHome from '~/assets/icons/home.svg?component'
 import IconBell from '~/assets/icons/bell.svg?component'
 import IconWallet from '~/assets/icons/wallet.svg?component'
 import IconBox from '~/assets/icons/box.svg?component'
-import IconServer from '~/assets/icons/server.svg?component'
+import IconServer from '~/assets/icons/server.svg?component' // Если используется для серверов
 import IconGamepad from '~/assets/icons/gamepad.svg?component'
 import IconBalance from '~/assets/icons/balance.svg?component'
 import IconLogout from '~/assets/icons/logout.svg?component'
 import IconCamera from '~/assets/icons/camera.svg?component'
 import IconTrash from '~/assets/icons/trash.svg?component'
-// Добавили иконку для тикетов
 import IconTicket from '~/assets/icons/ticket.svg?component'
+import IconSettings from '~/assets/icons/settings.svg?component'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -168,26 +168,36 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
           <IconBell />
           <span class="link-text">Уведомления</span>
         </NuxtLink>
+
+        <div class="section-title mt-4">Услуги</div>
+        
+        <NuxtLink to="/dashboard/services" class="nav-item">
+          <IconBox />
+          <span class="link-text">Мои услуги</span>
+        </NuxtLink>
+        
+        <NuxtLink to="/dashboard/order" class="nav-item">
+          <IconGamepad />
+          <span class="link-text">Заказать сервер</span> 
+        </NuxtLink>
+
+        <div class="section-title mt-4">Финансы</div>
+
         <NuxtLink to="/dashboard/topup" class="nav-item">
           <IconWallet />
           <span class="link-text">Пополнить</span>
         </NuxtLink>
-        <NuxtLink to="/dashboard/services" class="nav-item">
-          <IconBox />
-          <span class="link-text">Услуги</span>
-        </NuxtLink>
-        
+
+        <div class="nav-divider"></div>
+
         <NuxtLink to="/dashboard/tickets" class="nav-item">
           <IconTicket />
           <span class="link-text">Поддержка</span>
         </NuxtLink>
 
-        <div class="spacer"></div>
-        <div class="section-title">Услуги</div>
-        
-        <NuxtLink to="/dashboard/order" class="nav-item">
-          <IconGamepad />
-          <span class="link-text">Серверы</span> 
+        <NuxtLink to="/dashboard/settings" class="nav-item">
+          <IconSettings />
+          <span class="link-text">Настройки</span>
         </NuxtLink>
       </nav>
     </aside>
@@ -238,7 +248,6 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
   isolation: isolate; 
 }
 
-/* 🔥 overflow-x: hidden чтобы анимация вылета не расширяла страницу */
 .main-content { 
   flex-grow: 1; 
   padding-top: var(--global-top-padding); 
@@ -332,8 +341,19 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
 .router-link-active { color: #fff; font-weight: 600; }
 .nav-item:active { transform: scale(0.98); transition: transform 0.1s ease-out; }
 .router-link-active:hover { background-color: transparent; }
-.spacer { height: 30px; }
-.section-title { font-size: 11px; color: #444; font-weight: 700; letter-spacing: 1.5px; margin-bottom: 10px; padding-left: 12px; text-transform: uppercase; }
+
+/* 🔥 НОВЫЕ СТИЛИ ДЛЯ ОТСТУПОВ И ЛИНИИ */
+.mt-4 { margin-top: 24px; }
+.section-title { 
+  font-size: 11px; color: #555; font-weight: 700; 
+  letter-spacing: 1.5px; margin-bottom: 8px; padding-left: 12px; 
+  text-transform: uppercase; 
+}
+.nav-divider {
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.08);
+  margin: 20px 10px;
+}
 
 .mobile-header { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 60px; background: rgba(0,0,0, 0.8); backdrop-filter: blur(10px); z-index: 50; align-items: center; padding: 0 20px; border-bottom: 1px solid #222; }
 .burger-btn { background: none; border: none; color: white; cursor: pointer; padding: 5px; }

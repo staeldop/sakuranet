@@ -15,22 +15,31 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',     // Роль (user/admin)
-        'avatar',   // Ссылка на аватарку
-        'balance',  // Баланс пользователя
-        'pterodactyl_id', // ID в панели
-        'ptero_password', // Пароль от панели (для отображения клиенту)
+        'role',
+        'avatar',
+        'balance',
+        'pterodactyl_id',
+        'ptero_password',
+        // 🔥 ДОБАВЛЕНО: Поля для 2FA
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'two_factor_confirmed_at',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        // 🔥 ДОБАВЛЕНО: Скрываем секреты
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'balance' => 'decimal:2',
+        // 🔥 ДОБАВЛЕНО: Каст даты
+        'two_factor_confirmed_at' => 'datetime',
     ];
 
     public function services()

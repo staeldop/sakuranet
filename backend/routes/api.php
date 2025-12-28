@@ -43,8 +43,21 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    // ПРОФИЛЬ (Аватарка)
     Route::post('/user/avatar', [AuthController::class, 'updateAvatar']);
     Route::delete('/user/avatar', [AuthController::class, 'deleteAvatar']);
+
+    // 🔥 БЕЗОПАСНОСТЬ (Смена пароля и 2FA)
+    Route::put('/user/password', [AuthController::class, 'updatePassword']); // Смена пароля
+
+    // Роуты для 2FA (Google Authenticator)
+    Route::post('/user/two-factor-authentication', [AuthController::class, 'enableTwoFactor']); // Включить (инициализация)
+    Route::delete('/user/two-factor-authentication', [AuthController::class, 'disableTwoFactor']); // Отключить
+    Route::post('/user/confirmed-two-factor-authentication', [AuthController::class, 'confirmTwoFactor']); // Подтвердить кодом
+    
+    Route::get('/user/two-factor-qr-code', [AuthController::class, 'getTwoFactorQrCode']); // Получить QR
+    Route::get('/user/two-factor-secret-key', [AuthController::class, 'getTwoFactorSecretKey']); // Получить секретный ключ (текстом)
+    Route::get('/user/two-factor-recovery-codes', [AuthController::class, 'getTwoFactorRecoveryCodes']); // Коды восстановления
 
     // БИЛЛИНГ
     Route::post('/payment/topup', [PaymentController::class, 'topup']);     
