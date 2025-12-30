@@ -2,13 +2,14 @@
 import { ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 
+// Импортируем фоновое изображение
+import samuraiBg from '~/assets/images/samurai-bg.png'
+
 definePageMeta({
   layout: 'dashboard' 
 })
 
 const auth = useAuthStore()
-
-// Массив уведомлений (сейчас пустой)
 const importantNotifications = ref([])
 </script>
 
@@ -16,10 +17,18 @@ const importantNotifications = ref([])
   <div class="dashboard-page">
     <div class="content-wrapper">
       
-      <header class="welcome-section">
-        <h1 class="welcome-text">
-          Добро пожаловать, <span class="username">{{ auth.user?.name || 'User' }}</span>! 👋
-        </h1>
+      <header class="hero-section">
+        <div class="hero-overlay"></div>
+        <img :src="samuraiBg" alt="Hero" class="hero-bg" />
+        
+        <div class="hero-content">
+          <h1 class="welcome-text">
+            Добро пожаловать, <span class="username">{{ auth.user?.name || 'User' }}</span>!
+          </h1>
+          <p class="hero-subtitle">
+            Управляйте своими серверами, проектами и услугами в единой панели управления.
+          </p>
+        </div>
       </header>
 
       <div class="notifications-section">
@@ -35,7 +44,7 @@ const importantNotifications = ref([])
         </div>
 
         <div v-else class="notices-list">
-           </div>
+        </div>
       </div>
 
     </div>
@@ -49,26 +58,67 @@ const importantNotifications = ref([])
   padding-bottom: 60px;
 }
 
+/* 🔥 ИСПРАВЛЕНИЕ: Убрали ограничение ширины */
 .content-wrapper {
-  max-width: 800px;
+  width: 100%;
+  max-width: 100%; /* Было 800px */
 }
 
-/* === ПРИВЕТСТВИЕ === */
-.welcome-section {
+/* === HERO СЕКЦИЯ === */
+.hero-section {
+  position: relative;
+  height: 300px;
+  border-radius: 24px;
+  overflow: hidden;
   margin-bottom: 60px;
+  display: flex;
+  align-items: flex-end;
+  padding: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hero-bg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.hero-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.9) 100%);
+  z-index: 2;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 3;
+  max-width: 800px; /* Увеличил ширину текста, чтобы он не был слишком узким на широком экране */
 }
 
 .welcome-text {
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 800;
   color: white;
+  margin: 0 0 10px 0;
   letter-spacing: -0.02em;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
 }
 
 .username {
-  background: linear-gradient(90deg, #a855f7, #6366f1);
+  background: linear-gradient(90deg, #ff8c8c, #ff4d4d);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.hero-subtitle {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+  line-height: 1.5;
 }
 
 /* === СЕКЦИЯ УВЕДОМЛЕНИЙ === */
@@ -76,7 +126,7 @@ const importantNotifications = ref([])
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 2px;
-  color: #444;
+  color: #555;
   margin-bottom: 24px;
   font-weight: 800;
 }
@@ -87,10 +137,10 @@ const importantNotifications = ref([])
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 50px 20px;
   background: rgba(255, 255, 255, 0.015);
   border: 1px dashed rgba(255, 255, 255, 0.06);
-  border-radius: 32px;
+  border-radius: 24px;
   text-align: center;
 }
 
@@ -99,36 +149,33 @@ const importantNotifications = ref([])
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 80px;
-  height: 80px;
-  border-radius: 20px;
+  width: 70px;
+  height: 70px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  color: #333;
+  color: #444;
 }
 
 .empty-svg {
-  width: 36px;
-  height: 36px;
-  opacity: 0.6;
-}
-
-.empty-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0 0 6px 0;
+  width: 32px;
+  height: 32px;
+  opacity: 0.7;
 }
 
 .empty-subtitle {
   font-size: 14px;
-  color: #555;
+  color: #666;
   max-width: 320px;
   line-height: 1.5;
 }
 
 @media (max-width: 600px) {
-  .welcome-text { font-size: 28px; }
-  .empty-notices { padding: 40px 20px; }
+  .hero-section {
+    height: 240px;
+    padding: 20px;
+  }
+  .welcome-text { font-size: 24px; }
+  .hero-subtitle { font-size: 14px; }
 }
 </style>

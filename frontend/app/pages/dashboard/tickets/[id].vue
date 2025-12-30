@@ -237,3 +237,4 @@ const isMyMessage = (msg: any) => !msg.is_support
 
 .closed-notice { margin-top: 20px; padding: 15px; text-align: center; background: rgba(255,50,50,0.1); border: 1px solid rgba(255,50,50,0.2); color: #fca5a5; border-radius: 12px; font-size: 14px; }
 </style>
+ 

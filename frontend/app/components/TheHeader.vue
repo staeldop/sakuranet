@@ -2,6 +2,9 @@
 import { useAuthStore } from '~/stores/auth'
 import LogoImage from '~/assets/logo/logo-2.png'
 
+// Импортируем иконку дома из ассетов
+import IconHome from '~/assets/icons/home.svg?component'
+
 const auth = useAuthStore()
 const config = useRuntimeConfig()
 
@@ -25,24 +28,21 @@ const getAvatarUrl = () => {
       </div>
 
       <nav class="header-nav">
-        <NuxtLink to="/dashboard" class="nav-link">
-          <span class="icon">🏠</span> Главная
-        </NuxtLink>
+        <a href="https://sakuranet.space" class="nav-link">
+          <IconHome class="nav-icon" />
+          Главная
+        </a>
+
         <a href="https://wiki.sakuranet.space" target="_blank" class="nav-link">
-          <span class="icon">📖</span> Вики
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          </svg>
+          Вики
         </a>
       </nav>
 
       <div class="header-right">
-        <a href="https://sakuranet.space/" class="site-btn" target="_blank">
-          <span>На основной сайт</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-            <polyline points="15 3 21 3 21 9"></polyline>
-            <line x1="10" y1="14" x2="21" y2="3"></line>
-          </svg>
-        </a>
-
         <div class="user-pill">
           <div class="pill-avatar">
              <img v-if="auth.user?.avatar" :src="getAvatarUrl()" alt="Avatar" />
@@ -103,33 +103,24 @@ const getAvatarUrl = () => {
   transition: 0.2s;
 }
 .nav-link:hover { color: #fff; }
-.nav-link.router-link-active { color: #fff; }
+
+/* Стиль для иконок */
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.8;
+  transition: 0.2s;
+}
+.nav-link:hover .nav-icon {
+  opacity: 1;
+  transform: scale(1.05);
+}
 
 /* Правая часть */
 .header-right {
   display: flex;
   align-items: center;
   gap: 20px;
-}
-
-.site-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  color: #aaa;
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 600;
-  transition: 0.3s;
-}
-.site-btn:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.2);
 }
 
 /* Юзер-пилюля */
@@ -159,5 +150,12 @@ const getAvatarUrl = () => {
   font-size: 13px;
   font-weight: 600;
   color: #eee;
+}
+
+/* Скрываем шапку на мобильных устройствах */
+@media (max-width: 768px) {
+  .main-header {
+    display: none;
+  }
 }
 </style>
