@@ -3,8 +3,9 @@ import { ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '~/stores/auth'
 
-// ИМПОРТИРУЕМ ВЕРХНЮЮ ПАНЕЛЬ
+// ИМПОРТИРУЕМ КОМПОНЕНТЫ UI
 import TheHeader from '~/components/TheHeader.vue'
+import TheFooter from '~/components/TheFooter.vue'
 
 // ИКОНКИ
 import IconHome from '~/assets/icons/home.svg?component'
@@ -207,10 +208,15 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
     </aside>
 
     <main class="main-content">
-      <NuxtPage 
-        :page-key="route.fullPath"
-        :transition="{ name: 'page', mode: 'out-in' }" 
-      />
+      
+      <div class="page-inner">
+        <NuxtPage 
+          :page-key="route.fullPath"
+          :transition="{ name: 'page', mode: 'out-in' }" 
+        />
+      </div>
+
+      <TheFooter /> 
     </main>
 
   </div>
@@ -254,13 +260,27 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
 
 .main-content { 
   flex-grow: 1; 
+  /* 🔥 ВАЖНО: Убираем боковые отступы здесь, чтобы футер растянулся */
   padding-top: var(--global-top-padding); 
-  padding-left: 40px; 
-  padding-right: 40px; 
-  padding-bottom: 40px; 
+  padding-left: 0; 
+  padding-right: 0; 
+  padding-bottom: 0; 
+  
   overflow-y: auto;
   overflow-x: hidden;
-  position: relative; 
+  position: relative;
+  
+  /* Flex для прижатия футера */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 🔥 Новая обертка, которая создает отступы только для контента страницы */
+.page-inner {
+  padding: 0 40px 60px 40px; /* Добавили отступы сюда */
+  flex: 1; /* Растягивает блок, чтобы футер был внизу */
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .profile-block {

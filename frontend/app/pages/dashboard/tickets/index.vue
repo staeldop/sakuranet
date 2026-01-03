@@ -74,10 +74,18 @@ const setPriority = (val: TicketPriority) => {
 }
 
 const createTicket = async () => {
-  if (!newTicketForm.value.subject.trim() || !newTicketForm.value.message.trim()) {
-    alert('Заполните все поля')
+  // Валидация заголовка
+  if (!newTicketForm.value.subject.trim()) {
+    alert('Пожалуйста, укажите тему запроса')
     return
   }
+
+  // 🔥 ВАЖНО: Проверка на длину сообщения (минимум 5 символов)
+  if (newTicketForm.value.message.trim().length < 5) {
+    alert('Подробно опишите проблему (минимум 5 символов)')
+    return
+  }
+
   isSubmitting.value = true
   try {
     await useApi('/api/tickets', { method: 'POST', body: newTicketForm.value })
@@ -85,7 +93,7 @@ const createTicket = async () => {
     closeModal()
   } catch (e) {
     console.error(e)
-    alert('Ошибка создания тикета')
+    alert('Ошибка создания тикета. Проверьте соединение.')
   } finally {
     isSubmitting.value = false
   }
@@ -143,8 +151,11 @@ const formatDate = (iso: string) => {
             v-for="ticket in filteredTickets" 
             :key="ticket.id" 
             class="ticket-item"
+            :style="{ '--glow-color': statusConfig[ticket.status].color }"
             @click="openTicket(ticket.id)"
           >
+            <div class="ambient-glow"></div>
+
             <div class="tx-icon" :style="{ color: statusConfig[ticket.status].color, background: statusConfig[ticket.status].color + '1a' }">
               <IconBox v-if="ticket.status === 'open'" class="icon-svg" />
               <IconArrow v-else-if="ticket.status === 'answered'" class="icon-svg rotate-45" />
@@ -214,9 +225,12 @@ const formatDate = (iso: string) => {
                 <textarea 
                    v-model="newTicketForm.message" 
                    rows="5" 
-                   placeholder="Опишите проблему максимально подробно..." 
+                   placeholder="Опишите проблему максимально подробно (минимум 5 символов)..." 
                    class="dark-input area"
                 ></textarea>
+                <div class="input-hint" :class="{ error: newTicketForm.message.length > 0 && newTicketForm.message.length < 5 }">
+                   Минимум 5 символов
+                </div>
              </div>
 
              <div class="modal-actions">
@@ -250,39 +264,56 @@ const formatDate = (iso: string) => {
 .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
 .tab-btn.active { color: #fff; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.1); }
 
-/* --- СПИСОК --- */
+/* --- СПИСОК (Обновленный дизайн) --- */
 .tickets-grid { display: flex; flex-direction: column; gap: 12px; }
-.ticket-item { 
-  display: flex; align-items: center; gap: 15px; 
-  background: rgba(20, 20, 20, 0.6); border: 1px solid rgba(255,255,255,0.05); 
-  padding: 16px 20px; border-radius: 16px; transition: 0.2s; cursor: pointer; 
-}
-.ticket-item:hover { background: rgba(30, 30, 30, 0.8); border-color: rgba(255,255,255,0.1); transform: translateX(4px); }
 
-.tx-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.tx-info { flex-grow: 1; min-width: 0; }
+.ticket-item { 
+  position: relative; /* Для позиционирования свечения */
+  display: flex; align-items: center; gap: 15px; 
+  /* Новый стиль фона как в уведомлениях */
+  background: rgba(255, 255, 255, 0.02); 
+  border: 1px solid rgba(255, 255, 255, 0.05); 
+  padding: 16px 20px; border-radius: 16px; 
+  transition: all 0.2s ease; 
+  cursor: pointer; 
+  overflow: hidden; /* Чтобы свечение не вылезало */
+}
+
+.ticket-item:hover { 
+  background: rgba(255, 255, 255, 0.04); 
+  border-color: rgba(255, 255, 255, 0.1); 
+  transform: translateY(-1px); 
+}
+
+/* Эффект свечения */
+.ambient-glow {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 120px;
+  background: radial-gradient(circle at left center, var(--glow-color, #3b82f6), transparent 70%);
+  opacity: 0.15; pointer-events: none; transition: opacity 0.3s;
+}
+.ticket-item:hover .ambient-glow { opacity: 0.25; }
+
+.tx-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 2; }
+.tx-info { flex-grow: 1; min-width: 0; z-index: 2; }
 .tx-title { color: white; font-size: 15px; font-weight: 600; margin-bottom: 2px; }
 .tx-desc { color: #777; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.meta-col { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.meta-col { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; z-index: 2; }
 .badge { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
 .tx-date { color: #555; font-size: 12px; }
 
-.arrow-hint { color: #333; transition: 0.2s; }
+.arrow-hint { color: #333; transition: 0.2s; z-index: 2; }
 .ticket-item:hover .arrow-hint { color: #fff; }
 
-/* --- DARK MODAL (Новый стиль) --- */
+/* --- DARK MODAL --- */
 .modal-backdrop { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
 
 .dark-modal { 
   width: 100%; max-width: 500px; 
-  background: #050505; /* Глубокий черный */
-  border: 1px solid #1a1a1a; 
-  border-radius: 20px; 
-  padding: 32px; /* Увеличенный отступ */
+  background: #050505; border: 1px solid #1a1a1a; 
+  border-radius: 20px; padding: 32px; 
   position: relative; overflow: hidden;
   box-shadow: 0 20px 60px rgba(0,0,0,0.9);
-  /* Гарантирует правильный расчет ширины модалки */
   box-sizing: border-box; 
 }
 
@@ -294,24 +325,17 @@ const formatDate = (iso: string) => {
 .modal-form { display: flex; flex-direction: column; gap: 20px; }
 .form-group label { display: block; color: #888; font-size: 12px; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* Dark Inputs - ИСПРАВЛЕНО ЗДЕСЬ */
+/* Dark Inputs */
 .dark-input { 
-  width: 100%; 
-  background: #0a0a0a; 
-  border: 1px solid #222; 
-  padding: 14px 16px; 
-  border-radius: 12px; 
-  color: white; 
-  font-size: 14px; 
-  transition: 0.2s; 
-  outline: none; 
-  
-  /* Исправляет вылезание за границы (padding включается в width) */
-  box-sizing: border-box; 
+  width: 100%; background: #0a0a0a; border: 1px solid #222; 
+  padding: 14px 16px; border-radius: 12px; color: white; font-size: 14px; 
+  transition: 0.2s; outline: none; box-sizing: border-box; 
 }
-
 .dark-input:focus { border-color: #444; background: #0f0f0f; }
 .area { resize: vertical; min-height: 120px; font-family: inherit; line-height: 1.5; }
+
+.input-hint { font-size: 11px; color: #444; margin-top: 6px; text-align: right; transition: 0.2s; }
+.input-hint.error { color: #ef4444; }
 
 /* Priority Grid */
 .priority-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
@@ -319,8 +343,6 @@ const formatDate = (iso: string) => {
   background: #0a0a0a; border: 1px solid #222; 
   border-radius: 12px; padding: 12px; cursor: pointer; transition: 0.2s; 
   display: flex; flex-direction: column; align-items: center; gap: 8px; justify-content: center;
-  
-  /* Для надежности тоже добавляем */
   box-sizing: border-box;
 }
 .priority-card:hover { border-color: #444; background: #0f0f0f; }
@@ -344,7 +366,6 @@ const formatDate = (iso: string) => {
 
 .black-btn.secondary { background: transparent; border: 1px solid #333; color: #fff; }
 .black-btn.secondary:hover { border-color: #666; background: rgba(255,255,255,0.02); }
-
 .black-btn.compact { flex: initial; padding: 10px 20px; font-size: 13px; }
 
 /* Empty & Skeleton */
