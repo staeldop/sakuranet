@@ -216,7 +216,10 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
         />
       </div>
 
-      <TheFooter /> 
+      <div class="footer-wrapper">
+        <TheFooter />
+      </div>
+
     </main>
 
   </div>
@@ -260,27 +263,34 @@ watch(() => route.fullPath, () => isMenuOpen.value = false)
 
 .main-content { 
   flex-grow: 1; 
-  /* 🔥 ВАЖНО: Убираем боковые отступы здесь, чтобы футер растянулся */
   padding-top: var(--global-top-padding); 
-  padding-left: 0; 
-  padding-right: 0; 
+  /* Убеждаемся, что здесь 0 боковых отступов */
+  padding-left: 0 !important; 
+  padding-right: 0 !important; 
   padding-bottom: 0; 
   
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
   
-  /* Flex для прижатия футера */
   display: flex;
   flex-direction: column;
 }
 
-/* 🔥 Новая обертка, которая создает отступы только для контента страницы */
+/* Обертка контента - тут задаем отступы */
 .page-inner {
-  padding: 0 40px 60px 40px; /* Добавили отступы сюда */
-  flex: 1; /* Растягивает блок, чтобы футер был внизу */
+  padding: 0 40px 60px 40px; 
+  flex: 1; /* Растягивает блок, чтобы футер прижался к низу */
   width: 100%;
   box-sizing: border-box;
+}
+
+/* Обертка для футера - гарантирует 100% ширины */
+.footer-wrapper {
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .profile-block {

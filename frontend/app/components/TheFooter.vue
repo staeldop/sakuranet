@@ -56,8 +56,13 @@ import LogoImage from '~/assets/logo/logo-2.png'
 
 <style scoped>
 .site-footer {
-  width: 100%;
-  background: #050505; /* Глубокий черный под стиль модалки */
+  /* ГАРАНТИЯ РАСТЯГИВАНИЯ */
+  width: 100% !important;
+  min-width: 100%;
+  flex-shrink: 0; /* Не дает футеру сжиматься, если контент давит */
+  box-sizing: border-box;
+
+  background: #050505;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   padding: 60px 0 40px 0;
   margin-top: auto; 
