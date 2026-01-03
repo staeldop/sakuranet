@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { useAuthStore } from '~/stores/auth'
+import { useUiStore } from '~/stores/ui' // 1. Импортируем UI стор
 import LogoImage from '~/assets/logo/logo-2.png'
 
-// Импортируем иконку дома из ассетов
+// Импортируем иконки
 import IconHome from '~/assets/icons/home.svg?component'
+import IconFlower from '~/assets/icons/flower.svg?component' // 2. Иконка цветка
 
 const auth = useAuthStore()
+const uiStore = useUiStore() // 3. Инициализируем
 const config = useRuntimeConfig()
 
 const getAvatarUrl = () => {
@@ -43,6 +46,17 @@ const getAvatarUrl = () => {
       </nav>
 
       <div class="header-right">
+        
+        <button 
+          class="sakura-btn" 
+          :class="{ 'disabled': !uiStore.isSakuraEnabled }"
+          @click="uiStore.toggleSakura"
+          title="Вкл/Выкл фон"
+        >
+          <IconFlower class="sakura-icon" />
+          <span class="sakura-text">Сакура</span>
+        </button>
+
         <div class="user-pill">
           <div class="pill-avatar">
              <img v-if="auth.user?.avatar" :src="getAvatarUrl()" alt="Avatar" />
@@ -120,7 +134,68 @@ const getAvatarUrl = () => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px; /* Чуть увеличил отступ между кнопкой и профилем */
+}
+
+/* --- 🔥 СТИЛИ КНОПКИ САКУРЫ --- */
+.sakura-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px; /* Более округлая, чтобы сочеталась с User Pill */
+  padding: 6px 12px;
+  cursor: pointer;
+  color: #ffb7b2; /* Розовый цвет */
+  font-family: inherit;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.sakura-btn:hover {
+  background: rgba(255, 183, 178, 0.1);
+  border-color: rgba(255, 183, 178, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 183, 178, 0.15);
+}
+
+.sakura-btn:active {
+  transform: translateY(0);
+}
+
+.sakura-icon {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  /* Анимация вращения по умолчанию, если включено */
+  animation: spin 8s linear infinite; 
+}
+
+.sakura-text {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Состояние: Выключено */
+.sakura-btn.disabled {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.05);
+  color: #555; /* Серый цвет */
+}
+
+.sakura-btn.disabled .sakura-icon {
+  animation: none; /* Останавливаем вращение */
+  filter: grayscale(1);
+}
+
+.sakura-btn.disabled .sakura-text {
+  text-decoration: line-through; /* Зачеркиваем текст */
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Юзер-пилюля */

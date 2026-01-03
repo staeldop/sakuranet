@@ -18,7 +18,7 @@ const auth = useAuthStore()
 </template>
 
 <style>
-/* 🔥 ФИКС: Держать высоту и фон */
+/* 🔥 ВЕРНУЛИ КАК БЫЛО: Убрали глобальный box-sizing */
 .app-root {
   min-height: 100vh;
   display: flex;

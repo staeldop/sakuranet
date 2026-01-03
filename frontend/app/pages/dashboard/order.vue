@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue' // onMounted больше не нужен
 import { useApiFetch } from '~/composables/useApi' 
 
 import IconGamepad from '~/assets/icons/gamepad.svg?component'
@@ -63,18 +63,17 @@ const setCategory = (cat: string) => {
   }
 }
 
-const products = ref([]) 
-
-onMounted(async () => {
-  try {
-    const { data } = await useApiFetch<any[]>('/api/products')
-    if (data.value) {
-      products.value = data.value
-    }
-  } catch (e) {
-    console.error('Ошибка загрузки товаров:', e)
-  }
+// --- ИСПРАВЛЕНИЕ: Загрузка данных (SSR friendly) ---
+// Мы используем await прямо здесь. Nuxt загрузит данные на сервере перед отправкой страницы.
+const { data: fetchedData } = await useApiFetch<any[]>('/api/products', {
+    // key помогает Nuxt понять, что это те же данные при гидратации
+    key: 'products-list',
+    // lazy: false гарантирует, что мы ждем данные перед отрисовкой
+    lazy: false 
 })
+
+// Безопасное получение массива (если API вернет null, будет пустой массив)
+const products = computed(() => fetchedData.value || [])
 
 const filteredProducts = computed(() => {
   return products.value.filter((product: any) => {

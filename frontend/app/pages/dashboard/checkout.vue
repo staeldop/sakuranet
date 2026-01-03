@@ -7,6 +7,11 @@ import FileExplorer from '~/components/FileExplorer.vue'
 // Иконки
 import IconArrow from '~/assets/icons/arrow-right.svg?component'
 import IconSearch from '~/assets/icons/search.svg?component'
+// Иконки для правой карточки
+import IconCpu from '~/assets/icons/cpu.svg?component'
+import IconRam from '~/assets/icons/ram.svg?component'
+import IconDisk from '~/assets/icons/disk.svg?component'
+import IconServer from '~/assets/icons/server.svg?component'
 import imgFlagDE from '~/assets/flags/de.png'
 
 definePageMeta({ layout: 'dashboard' })
@@ -34,12 +39,11 @@ const periods = [
 
 const IGNORED_PATH_WORDS = ['game_eggs', 'twitch', 'voice_servers', 'other', 'misc', 'software']
 
-// --- ЛОГИКА ДЕРЕВА (С ЗАЩИТОЙ ОТ ОШИБОК) ---
+// --- ЛОГИКА ДЕРЕВА ---
 const buildTreeCorrected = (nestsData: any[]) => {
   const root: any = {}
   const prioritySet = new Set<string>()
 
-  // 1. Собираем приоритеты
   nestsData.forEach(nest => {
     if (!nest.attributes?.relationships?.eggs?.data) return;
     nest.attributes.relationships.eggs.data.forEach((egg: any) => {
@@ -49,30 +53,22 @@ const buildTreeCorrected = (nestsData: any[]) => {
     })
   })
 
-  // 2. Строим дерево
   nestsData.forEach(nest => {
     const nestName = nest.attributes.name
     const eggs = nest.attributes.relationships?.eggs?.data
-    
     if (!eggs || eggs.length === 0) return
 
-    // Создаем корневую категорию
     if (!root[nestName]) {
       root[nestName] = {
-        name: nestName,
-        type: 'folder',
-        children: {},
-        containsSelected: false,
+        name: nestName, type: 'folder', children: {}, containsSelected: false,
         isPriority: prioritySet.has(nestName.toLowerCase())
       }
     }
 
     eggs.forEach((egg: any) => {
       egg._nestId = nest.attributes.id 
-
       const desc = egg.attributes.description || ''
       const pathMatch = desc.match(/\[PATH:\s*([^\]]+)\]/i)
-      
       let pathParts: string[] = []
 
       if (pathMatch) {
@@ -83,90 +79,52 @@ const buildTreeCorrected = (nestsData: any[]) => {
         })
       }
 
-      // Убираем дублирование имен в пути (Paper > Paper -> Paper)
       if (pathParts.length > 0) {
         const lastFolder = pathParts[pathParts.length - 1].toLowerCase()
         const eggName = egg.attributes.name.toLowerCase()
-        if (eggName.includes(lastFolder) || lastFolder === eggName) {
-          pathParts.pop()
-        }
+        if (eggName.includes(lastFolder) || lastFolder === eggName) pathParts.pop()
       }
 
       let currentLevel = root[nestName].children
-
       pathParts.forEach(part => {
-        // Если папки нет - создаем
         if (!currentLevel[part]) {
           currentLevel[part] = { 
-            name: part, 
-            type: 'folder', 
-            children: {}, 
-            containsSelected: false,
+            name: part, type: 'folder', children: {}, containsSelected: false,
             isPriority: prioritySet.has(part.toLowerCase()) 
           }
-        }
-        // 🔥 ФИКС ОШИБКИ: Если на этом месте стоит ФАЙЛ, превращаем его в ПАПКУ
-        else if (currentLevel[part].type === 'file') {
-             const existingFile = currentLevel[part]; // Сохраняем файл
+        } else if (currentLevel[part].type === 'file') {
+             const existingFile = currentLevel[part];
              currentLevel[part] = {
-                 name: part,
-                 type: 'folder',
-                 children: {}, // Создаем детей
-                 containsSelected: false,
+                 name: part, type: 'folder', children: {}, containsSelected: false,
                  isPriority: existingFile.isPriority
              };
-             // Возвращаем файл обратно, но уже внутрь папки
              currentLevel[part].children[existingFile.name] = existingFile;
         }
-
         currentLevel = currentLevel[part].children
       })
       
-      // Добавляем само ядро (файл)
-      // Если мы хотим положить файл, а там уже папка с таким именем - кладем внутрь
       const eggName = egg.attributes.name;
-      
       if (currentLevel[eggName] && currentLevel[eggName].type === 'folder') {
-          currentLevel[eggName].children[eggName] = { 
-            name: eggName, 
-            type: 'file', 
-            data: egg,
-            isPriority: false 
-          }
+          currentLevel[eggName].children[eggName] = { name: eggName, type: 'file', data: egg, isPriority: false }
       } else {
-          currentLevel[eggName] = { 
-            name: eggName, 
-            type: 'file', 
-            data: egg,
-            isPriority: false 
-          }
+          currentLevel[eggName] = { name: eggName, type: 'file', data: egg, isPriority: false }
       }
     })
   })
   return root
 }
 
-// Фильтрация
 const filterNode = (node: any, query: string): any => {
-  if (node.type === 'file') {
-    return node.name.toLowerCase().includes(query) ? node : null
-  }
+  if (node.type === 'file') return node.name.toLowerCase().includes(query) ? node : null
   const filteredChildren: any = {}
   let hasMatchingChildren = false
-  
   if (node.children) {
       Object.keys(node.children).forEach(key => {
         const result = filterNode(node.children[key], query)
-        if (result) {
-          filteredChildren[key] = result
-          hasMatchingChildren = true
-        }
+        if (result) { filteredChildren[key] = result; hasMatchingChildren = true }
       })
   }
-  if (hasMatchingChildren) {
-    return { ...node, children: filteredChildren, containsSelected: true }
-  }
-  return null
+  return hasMatchingChildren ? { ...node, children: filteredChildren, containsSelected: true } : null
 }
 
 const filteredTree = computed(() => {
@@ -185,7 +143,6 @@ const onSelect = (egg: any) => {
   selectedNestId.value = egg._nestId
 }
 
-// Покупка
 const totalPrice = computed(() => {
   if (!product.value) return 0
   const base = Number(product.value.price)
@@ -201,7 +158,6 @@ const handleCheckout = async () => {
 
   isSubmitting.value = true
   try {
-    // Получаем полный ответ (data), чтобы вытащить пароль
     const { data, error } = await useApiFetch<any>('/api/services', {
       method: 'POST',
       body: {
@@ -214,26 +170,14 @@ const handleCheckout = async () => {
       }
     })
 
-    if (error.value) {
-      const msg = error.value.data?.message || error.value.message || 'Ошибка при создании'
-      throw new Error(msg)
-    }
+    if (error.value) throw new Error(error.value.data?.message || error.value.message || 'Ошибка')
 
-    // Проверяем, пришел ли новый пароль (для новых юзеров Pterodactyl)
     const newPassword = data.value?.new_user_password
-    
-    if (newPassword) {
-      alert(`Успешно!\n\nВаш аккаунт в панели управления создан.\nПароль: ${newPassword}\n\n(Обязательно сохраните его! Также его можно найти в настройках сервера)`)
-    } else {
-      alert('Сервер успешно оплачен и устанавливается!')
-    }
+    if (newPassword) alert(`Успешно!\nВаш пароль: ${newPassword}\n(Сохраните его!)`)
+    else alert('Сервер успешно оплачен и устанавливается!')
 
-    // Перенаправляем сразу в настройки созданного сервера
-    if (data.value?.service?.id) {
-       router.push(`/dashboard/services/${data.value.service.id}`)
-    } else {
-       router.push('/dashboard/services')
-    }
+    if (data.value?.service?.id) router.push(`/dashboard/services/${data.value.service.id}`)
+    else router.push('/dashboard/services')
 
   } catch (e: any) {
     alert(e.message || 'Ошибка')
@@ -250,20 +194,12 @@ onMounted(async () => {
     if (prodData.value) product.value = prodData.value.find((p: any) => p.id == id)
     
     const { data: treeData } = await useApiFetch<any>('/api/eggs/tree')
-    
-    // Поддержка и плоского массива, и JSON:API
     let nestsArray = [];
     if (treeData.value) {
-        if (Array.isArray(treeData.value)) {
-            nestsArray = treeData.value;
-        } else if (Array.isArray(treeData.value.data)) {
-            nestsArray = treeData.value.data;
-        }
+        if (Array.isArray(treeData.value)) nestsArray = treeData.value;
+        else if (Array.isArray(treeData.value.data)) nestsArray = treeData.value.data;
     }
-
-    if (nestsArray.length > 0) {
-      fileTree.value = buildTreeCorrected(nestsArray)
-    }
+    if (nestsArray.length > 0) fileTree.value = buildTreeCorrected(nestsArray)
   } catch (e) { console.error(e) } finally { isLoading.value = false }
 })
 </script>
@@ -283,6 +219,7 @@ onMounted(async () => {
       </div>
 
       <div class="checkout-grid">
+        
         <div class="left-column">
           
           <div class="section-block">
@@ -305,8 +242,7 @@ onMounted(async () => {
               <TransitionGroup name="list">
                 <FileExplorer 
                   v-for="key in Object.keys(filteredTree).sort((a,b) => {
-                      const nodeA = filteredTree[a];
-                      const nodeB = filteredTree[b];
+                      const nodeA = filteredTree[a]; const nodeB = filteredTree[b];
                       if (nodeA.isPriority && !nodeB.isPriority) return -1;
                       if (!nodeA.isPriority && nodeB.isPriority) return 1;
                       return a.localeCompare(b);
@@ -351,103 +287,86 @@ onMounted(async () => {
 
         <div class="right-column">
           
-          <!-- ОБНОВЛЕННАЯ СОВРЕМЕННАЯ КАРТОЧКА -->
-          <div class="summary-card sticky top-5">
-            <div class="ambient-glow purple"></div>
+          <div class="product-card sticky top-5">
+            
+            <div class="glow-bg"></div>
 
-            <!-- Шапка: Флаг и Название -->
-            <div class="summary-header">
-              <div class="flag-wrapper">
-                <img :src="imgFlagDE" class="flag-icon" />
-              </div>
-              <div class="prod-info">
+            <div class="card-content">
+                <div class="card-header">
+                     <div class="header-icon-box">
+                        <img :src="imgFlagDE" class="header-flag" />
+                     </div>
+                     <div class="header-info">
+                        <ClientOnly>
+                            <h3 class="product-title">{{ product?.name || 'Загрузка...' }}</h3>
+                        </ClientOnly>
+                        <div class="location-row">
+                            <span class="status-dot"></span>
+                            <span class="loc-text">Falkenstein, DE</span>
+                        </div>
+                     </div>
+                </div>
+
+                <div class="divider"></div>
+
                 <ClientOnly>
-                  <h3 class="prod-name">{{ product?.name || 'Загрузка...' }}</h3>
-                  <span class="prod-cat">
-                    <span class="status-dot"></span> Falkenstein, DE
-                  </span>
+                <div class="specs-grid">
+                    <div class="spec-box">
+                        <div class="spec-icon-wrap"><IconCpu class="spec-svg" /></div>
+                        <div class="spec-info">
+                            <span class="spec-val">{{ product?.cpu_limit ? product.cpu_limit + '%' : '-' }}</span>
+                            <span class="spec-label">vCore</span>
+                        </div>
+                    </div>
+                    <div class="spec-box">
+                        <div class="spec-icon-wrap"><IconRam class="spec-svg" /></div>
+                        <div class="spec-info">
+                             <span class="spec-val">{{ product?.memory_mb ? (product.memory_mb / 1024).toFixed(0) + ' GB' : '-' }}</span>
+                            <span class="spec-label">RAM</span>
+                        </div>
+                    </div>
+                    <div class="spec-box">
+                        <div class="spec-icon-wrap"><IconDisk class="spec-svg" /></div>
+                        <div class="spec-info">
+                            <span class="spec-val">{{ product?.disk_mb ? (product.disk_mb / 1024).toFixed(0) + ' GB' : '-' }}</span>
+                            <span class="spec-label">NVMe</span>
+                        </div>
+                    </div>
+                    <div class="spec-box">
+                        <div class="spec-icon-wrap"><IconServer class="spec-svg" /></div>
+                        <div class="spec-info">
+                            <span class="spec-val">1 Gbps</span>
+                            <span class="spec-label">Port</span>
+                        </div>
+                    </div>
+                </div>
                 </ClientOnly>
-              </div>
+
+                <div class="software-status-box" :class="{ 'has-selection': selectedEgg }">
+                    <div class="soft-icon-wrap">
+                        <IconSearch v-if="!selectedEgg" class="spec-svg" />
+                        <svg v-else class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"></path></svg>
+                    </div>
+                    <div class="spec-info">
+                         <span class="spec-val">{{ selectedEgg ? selectedEgg.attributes.name : 'Ядро не выбрано' }}</span>
+                         <span class="spec-label">Software</span>
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <div class="price-row">
+                        <span class="currency">₽</span>
+                        <span class="amount">{{ formatPrice(totalPrice).replace('₽', '').trim() }}</span>
+                        <span class="period">/мес</span>
+                    </div>
+                    
+                    <button @click="handleCheckout" :disabled="isSubmitting || !selectedEgg" class="action-btn-full">
+                         <span v-if="!isSubmitting">Создать сервер</span>
+                         <span v-else class="spinner-sm"></span>
+                    </button>
+                </div>
             </div>
-
-            <ClientOnly>
-              <!-- Сетка характеристик (Grid) -->
-              <div class="specs-grid">
-                <!-- CPU -->
-                <div class="spec-tile">
-                  <div class="icon-box">
-                    <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><path d="M9 9h6v6H9z"></path><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"></path></svg>
-                  </div>
-                  <div class="spec-data">
-                    <span class="s-val">{{ product?.cpu_limit ? product.cpu_limit + '%' : '-' }}</span>
-                    <span class="s-lbl">vCore</span>
-                  </div>
-                </div>
-
-                <!-- RAM -->
-                <div class="spec-tile">
-                  <div class="icon-box">
-                    <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7v10h20V7H2zm4 4h2v2H6v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"></path></svg>
-                  </div>
-                  <div class="spec-data">
-                    <span class="s-val">{{ product?.memory_mb ? (product.memory_mb / 1024).toFixed(0) + ' GB' : '-' }}</span>
-                    <span class="s-lbl">RAM</span>
-                  </div>
-                </div>
-
-                <!-- Disk -->
-                <div class="spec-tile">
-                  <div class="icon-box">
-                    <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path><circle cx="12" cy="12" r="4"></circle><path d="M12 12h.01"></path></svg>
-                  </div>
-                  <div class="spec-data">
-                    <span class="s-val">{{ product?.disk_mb ? (product.disk_mb / 1024).toFixed(0) + ' GB' : '-' }}</span>
-                    <span class="s-lbl">NVMe</span>
-                  </div>
-                </div>
-
-                <!-- Port -->
-                <div class="spec-tile">
-                  <div class="icon-box">
-                     <svg class="spec-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
-                  </div>
-                  <div class="spec-data">
-                    <span class="s-val">1 Gbps</span>
-                    <span class="s-lbl">Port</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Выбор ядра -->
-              <div class="core-selector" :class="{ 'is-selected': selectedEgg }">
-                <div class="cs-icon">
-                  <IconSearch v-if="!selectedEgg" class="cs-svg" />
-                  <svg v-else class="cs-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 0V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-5 0h2.5m13 0H21m-9 0v4"></path></svg>
-                </div>
-                <div class="cs-info">
-                  <span class="cs-label">Ядро сервера</span>
-                  <span class="cs-value">{{ selectedEgg ? selectedEgg.attributes.name : 'Не выбрано' }}</span>
-                </div>
-                <div class="cs-status" v-if="!selectedEgg">!</div>
-              </div>
-
-              <div class="divider-glass"></div>
-
-              <!-- Футер: Цена и кнопка -->
-              <div class="footer-action">
-                <div class="price-container">
-                  <div class="price-big">{{ formatPrice(totalPrice) }}</div>
-                  <div class="price-small">за {{ selectedPeriod }} мес.</div>
-                </div>
-                
-                <button @click="handleCheckout" :disabled="isSubmitting || !selectedEgg" class="checkout-btn-modern">
-                  <span v-if="!isSubmitting">Создать</span>
-                  <span v-else class="spinner-sm"></span>
-                </button>
-              </div>
-            </ClientOnly>
           </div>
-          <!-- КОНЕЦ НОВОЙ КАРТОЧКИ -->
 
         </div>
       </div>
@@ -456,7 +375,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* Layout */
+/* === LAYOUT & COMMON === */
 .checkout-page { width: 100%; max-width: 1200px; padding-bottom: 80px; padding-left: 20px; padding-right: 20px; color: #eee; font-family: 'Inter', sans-serif; }
 .header-row { margin-bottom: 30px; }
 .back-link { background: none; border: none; color: #666; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: 0.2s; padding: 0; font-size: 14px; margin-bottom: 10px; }
@@ -468,6 +387,7 @@ onMounted(async () => {
 .checkout-grid { display: grid; grid-template-columns: 1fr; gap: 40px; }
 @media(min-width: 1024px) { .checkout-grid { grid-template-columns: 1.8fr 1fr; } }
 
+/* === ЛЕВАЯ КОЛОНКА === */
 .section-block { margin-bottom: 40px; }
 .block-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
 .block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
@@ -481,13 +401,10 @@ onMounted(async () => {
 .search-input { width: 100%; padding: 10px 10px 10px 38px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; color: #fff; font-size: 13px; transition: 0.2s; box-sizing: border-box; }
 .search-input:focus { border-color: rgba(255, 255, 255, 0.2); outline: none; }
 
-.explorer-container { 
-  max-height: 500px; overflow-y: auto; 
-  padding: 4px; margin: -4px; 
-}
+.explorer-container { max-height: 500px; overflow-y: auto; padding: 4px; margin: -4px; }
 .empty-msg { text-align: center; color: #555; padding: 40px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; }
 
-/* Period (Locked) */
+/* Periods */
 .periods-locked-wrapper { position: relative; border-radius: 16px; overflow: hidden; }
 .periods-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .disabled-state { opacity: 0.4; filter: grayscale(0.8); pointer-events: none; }
@@ -497,184 +414,112 @@ onMounted(async () => {
 .period-card.active .period-val { color: #fff; }
 .discount-tag { position: absolute; top: 5px; right: 5px; background: #22c55e; color: #000; font-size: 10px; padding: 2px 6px; border-radius: 100px; font-weight: 700; z-index: 2; }
 
-/* Locked Overlay */
-.locked-overlay {
-  position: absolute; inset: 0; z-index: 10;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, 0.2); backdrop-filter: blur(2px);
-}
-.status-badge {
-  background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 8px 16px; border-radius: 50px; font-weight: 600; font-size: 13px; color: #fff;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
+.locked-overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.2); backdrop-filter: blur(2px); }
+.status-badge { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); padding: 8px 16px; border-radius: 50px; font-weight: 600; font-size: 13px; color: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
 
-/* Glows */
 .ambient-glow { position: absolute; left: 0; top: 0; bottom: 0; width: 80px; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
 .ambient-glow.blue { background: radial-gradient(circle at left center, #3b82f6, transparent 70%); }
-.ambient-glow.purple { background: radial-gradient(circle at top left, #a855f7, transparent 70%); width: 200px; height: 200px; }
 .period-card:hover .ambient-glow { opacity: 0.15; }
 .period-card.active .ambient-glow { opacity: 0.25; }
-.summary-card .ambient-glow { opacity: 0.15; }
 
-/* --- СТИЛИ ДЛЯ НОВОЙ КАРТОЧКИ --- */
-.summary-card {
-  position: relative;
-  background: rgba(18, 18, 20, 0.7);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5);
-  border-radius: 24px;
-  padding: 24px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+/* === ПРАВАЯ КОЛОНКА (БЕЗ ЛИШНИХ ФОНОВ) === */
+.product-card {
+    position: relative;
+    background: #050505;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 24px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
 }
 
-/* Хедер */
-.summary-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  position: relative;
-  z-index: 2;
+.glow-bg {
+    position: absolute; top: -50%; right: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle at 70% 30%, rgba(120, 119, 198, 0.05), transparent 50%);
+    opacity: 1; pointer-events: none;
 }
-.flag-wrapper {
-  width: 48px; height: 48px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid rgba(255,255,255,0.05);
-}
-.flag-icon { width: 28px; height: auto; border-radius: 4px; }
-.prod-info { display: flex; flex-direction: column; }
-.prod-name { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.2; margin: 0; }
-.prod-cat { font-size: 13px; color: #888; display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-.status-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; display: inline-block;}
 
-/* Сетка характеристик */
+.card-content { position: relative; z-index: 2; display: flex; flex-direction: column; height: 100%; }
+
+/* Header */
+.card-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+/* УБРАЛ ФОН И БОРДЮР У БЛОКА ФЛАГА */
+.header-icon-box {
+    width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.header-flag { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; opacity: 0.9; }
+.header-info { display: flex; flex-direction: column; }
+.product-title { margin: 0; font-size: 18px; font-weight: 700; color: #fff; line-height: 1.2; }
+.location-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.status-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; }
+.loc-text { font-size: 12px; color: #666; }
+
+.divider { height: 1px; background: #1a1a1a; margin-bottom: 20px; width: 100%; }
+
+/* Grid */
 .specs-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  position: relative; z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 24px; /* Увеличил отступ между колонками */
+    margin-bottom: 20px;
 }
-.spec-tile {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.03);
-  border-radius: 16px;
-  padding: 12px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  transition: 0.3s;
+/* УБРАЛ ФОН И БОРДЮР У ПЛИТОК */
+.spec-box {
+    display: flex; align-items: center; gap: 12px;
 }
-.spec-tile:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
+.spec-icon-wrap { color: #666; display: flex; align-items: center; justify-content: center; } /* Чуть светлее иконки */
+.spec-svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.spec-info { display: flex; flex-direction: column; }
+.spec-val { font-size: 14px; font-weight: 700; color: #eee; line-height: 1.1; }
+.spec-label { font-size: 11px; color: #666; margin-top: 2px; }
 
-.icon-box {
-  width: 36px; height: 36px;
-  background: rgba(0,0,0,0.3);
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  color: #a3a3a3; flex-shrink: 0;
+/* Selected Software Row */
+/* УБРАЛ БАЗОВЫЙ ФОН, ОСТАВИЛ ТОЛЬКО ПРИ ВЫБОРЕ */
+.software-status-box {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 24px;
+    transition: 0.3s;
+    border-radius: 12px;
+    padding: 10px 0;
 }
-.spec-svg { width: 18px; height: 18px; }
+.software-status-box.has-selection {
+    background: rgba(34, 197, 94, 0.08); /* Легкий зеленый фон при выборе */
+    padding-left: 12px;
+}
+.soft-icon-wrap { color: #666; }
+.has-selection .soft-icon-wrap { color: #22c55e; }
 
-.spec-data { display: flex; flex-direction: column; overflow: hidden; }
-.s-val { font-size: 14px; font-weight: 600; color: #fff; line-height: 1.1; white-space: nowrap;}
-.s-lbl { font-size: 11px; color: #666; margin-top: 2px; }
+/* Footer */
+.card-footer { margin-top: auto; }
+.price-row { display: flex; align-items: baseline; margin-bottom: 12px; }
+.currency { font-size: 18px; color: #fff; font-weight: 500; margin-right: 2px; }
+.amount { font-size: 32px; color: #fff; font-weight: 700; letter-spacing: -1px; }
+.period { font-size: 14px; color: #666; margin-left: 6px; }
 
-/* Блок выбора ядра */
-.core-selector {
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px dashed rgba(239, 68, 68, 0.3);
-  border-radius: 16px;
-  padding: 14px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 4px;
-  transition: 0.3s;
-  cursor: pointer;
-  position: relative; z-index: 2;
+.action-btn-full {
+    width: 100%;
+    background: #fff; color: #000;
+    text-decoration: none; padding: 14px;
+    border-radius: 12px; font-size: 14px; font-weight: 700;
+    border: none; cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center;
 }
-.core-selector.is-selected {
-  background: linear-gradient(90deg, rgba(59, 130, 246, 0.08), rgba(168, 85, 247, 0.08));
-  border: 1px solid rgba(168, 85, 247, 0.3);
-}
+.action-btn-full:hover:not(:disabled) { background: #e5e5e5; transform: translateY(-1px); }
+.action-btn-full:disabled { background: #222; color: #555; cursor: not-allowed; }
 
-.cs-icon {
-  width: 40px; height: 40px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  color: #ddd;
-}
-.cs-svg { width: 20px; height: 20px; }
-.cs-info { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
-.cs-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #777; margin-bottom: 2px;}
-.cs-value { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cs-status { 
-  width: 24px; height: 24px; background: #ef4444; color: #fff; border-radius: 50%; 
-  font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center;
-  animation: pulse 2s infinite;
-}
-
-/* Футер: Цена и кнопка */
-.divider-glass { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); margin: 0; width: 100%; }
-
-.footer-action {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  position: relative; z-index: 2;
-}
-.price-container { display: flex; flex-direction: column; }
-.price-big {
-  font-size: 28px; font-weight: 800; color: #fff;
-  background: linear-gradient(90deg, #fff, #a5b4fc);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-.price-small { font-size: 12px; color: #666; }
-
-.checkout-btn-modern {
-  flex: 1;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  border: none;
-  border-radius: 14px;
-  color: #fff;
-  font-weight: 600;
-  font-size: 15px;
-  padding: 0 24px;
-  height: 52px;
-  cursor: pointer;
-  box-shadow: 0 8px 20px -6px rgba(99, 102, 241, 0.5);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  display: flex; align-items: center; justify-content: center;
-}
-.checkout-btn-modern:hover:not(:disabled) {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 12px 25px -8px rgba(99, 102, 241, 0.7);
-}
-.checkout-btn-modern:disabled {
-  background: #333; color: #555; box-shadow: none; cursor: not-allowed;
-}
-
-/* Spinner для кнопки */
 .spinner-sm {
-  width: 20px; height: 20px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff; border-radius: 50%;
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #888; border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Scrollbar */
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .list-move, .list-enter-active, .list-leave-active { transition: all 0.4s ease; }
 .list-leave-to { opacity: 0; transform: translateX(20px); }
 .list-enter-from { opacity: 0; transform: translateX(-20px); }
